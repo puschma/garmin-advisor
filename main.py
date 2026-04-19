@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Garmin Training Advisor – Cloud Backend für Railway
-Authentifizierung via Browser-Cookies (kein Login, kein 429)
+Authentifizierung via Browser-Cookies (JWT_WEB + GARMIN-SSO-cust-GUID)
 """
 
 import json
@@ -16,31 +16,32 @@ CORS(app)
 
 GARMIN_API = "https://connect.garmin.com/modern/proxy"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "NK": "NT",
     "Di-Backend": "connectapi.garmin.com",
     "X-app-ver": "4.84.0.0",
     "Accept": "application/json",
+    "Origin": "https://connect.garmin.com",
+    "Referer": "https://connect.garmin.com/modern/",
 }
+
+def make_session(token):
+    """Baut eine requests.Session mit allen verfügbaren Garmin-Cookies."""
+    session = req.Session()
+    session.headers.update(HEADERS)
+    # Alle gespeicherten Cookies setzen
+    for name, value in token.items():
+        if name == "type":
+            continue
+        session.cookies.set(name, value, domain=".garmin.com")
+    return session
 
 def get_session():
     token_str = os.environ.get("GARMIN_TOKEN", "")
     if not token_str:
         raise ValueError("GARMIN_TOKEN nicht gesetzt. Bitte Setup-Seite aufrufen.")
     token = json.loads(token_str)
-    session = req.Session()
-    session.headers.update(HEADERS)
-    if token.get("type") == "cookie":
-        session.cookies.set("JWT_FGP", token["JWT_FGP"], domain=".garmin.com")
-        session.cookies.set("GARMIN-SSO-GUID", token["GARMIN-SSO-GUID"], domain=".garmin.com")
-    else:
-        oauth = token.get("oauth2", {})
-        access = oauth.get("access_token") or token.get("access_token", "")
-        if access:
-            session.headers["Authorization"] = f"Bearer {access}"
-        else:
-            raise ValueError("Unbekanntes Token-Format.")
-    return session
+    return make_session(token)
 
 def to_hours(secs):
     return round((secs or 0) / 3600, 1)
@@ -57,6 +58,7 @@ def fetch_sleep(session, days=7):
                 timeout=15
             )
             if r.status_code != 200:
+                print(f"Sleep {d}: HTTP {r.status_code}")
                 continue
             raw = r.json()
             dto = raw.get("dailySleepDTO", {})
@@ -92,6 +94,7 @@ def fetch_training(session, days=7):
         "walking": ("Gehen", "🚶"), "hiking": ("Wandern", "⛰️"),
         "indoor_cycling": ("Indoor Bike", "🚴"), "elliptical": ("Ellipse", "🏃"),
         "cardio": ("Cardio", "❤️"), "soccer": ("Fussball", "⚽"),
+        "tennis": ("Tennis", "🎾"), "fitness_equipment": ("Fitness", "🏋️"),
     }
     today = date.today()
     start = (today - timedelta(days=days)).isoformat()
@@ -131,7 +134,7 @@ def fetch_training(session, days=7):
     return results[-days:]
 
 # ══════════════════════════════════════════════
-# ROUTES
+# SETUP PAGE
 # ══════════════════════════════════════════════
 
 @app.route("/")
@@ -146,58 +149,64 @@ def index():
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#07090f;color:#e8eaf0;font-family:system-ui,sans-serif;
   min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-.card{width:100%;max-width:440px;background:#0d1120;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:28px 24px}
+.card{width:100%;max-width:460px;background:#0d1120;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:28px 24px}
 h1{font-size:20px;font-weight:700;margin-bottom:6px}
 .sub{font-size:13px;color:rgba(232,234,240,0.45);margin-bottom:20px;line-height:1.5}
-.status{padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:20px;line-height:1.6}
+.status{padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:20px}
 .ok{background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);color:#86efac}
 .warn{background:rgba(251,146,60,0.1);border:1px solid rgba(251,146,60,0.2);color:#fdba74}
-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,234,240,0.4);display:block;margin-bottom:7px}
-input{width:100%;padding:13px 14px;margin-bottom:14px;background:#121928;
-  border:1px solid rgba(255,255,255,0.07);border-radius:12px;color:#e8eaf0;font-size:14px;outline:none}
+label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,234,240,0.4);display:block;margin-bottom:7px;margin-top:12px}
+input{width:100%;padding:12px 14px;background:#121928;border:1px solid rgba(255,255,255,0.07);
+  border-radius:12px;color:#e8eaf0;font-size:13px;outline:none;font-family:monospace}
 input:focus{border-color:#3b82f6}
 button{width:100%;padding:15px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);
-  border:none;border-radius:13px;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+  border:none;border-radius:13px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px}
 button:disabled{opacity:0.45;cursor:not-allowed}
 .result{margin-top:20px;padding:14px;background:#0a1628;border:1px solid rgba(59,130,246,0.2);border-radius:12px;display:none}
 .result h3{font-size:13px;color:#4ade80;margin-bottom:10px}
 .token-box{background:#060a10;border:1px solid rgba(255,255,255,0.06);border-radius:8px;
-  padding:10px 12px;font-family:monospace;font-size:10px;color:#93c5fd;
+  padding:10px;font-family:monospace;font-size:10px;color:#93c5fd;
   word-break:break-all;max-height:80px;overflow-y:auto;margin-bottom:10px;line-height:1.5}
 .copy-btn{padding:11px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.25);
-  border-radius:10px;color:#4ade80;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;width:100%}
+  border-radius:10px;color:#4ade80;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;width:100%;margin-top:0}
 .step{display:flex;gap:10px;align-items:flex-start;margin-bottom:7px;font-size:12px;color:rgba(232,234,240,0.55)}
 .sn{width:20px;height:20px;border-radius:50%;background:rgba(59,130,246,0.2);color:#93c5fd;
   font-size:11px;font-weight:700;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.err{margin-top:14px;padding:12px 14px;background:rgba(239,68,68,0.1);
-  border:1px solid rgba(239,68,68,0.2);border-radius:10px;font-size:13px;color:#fca5a5;display:none;line-height:1.5}
+.err{margin-top:14px;padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);
+  border-radius:10px;font-size:13px;color:#fca5a5;display:none;line-height:1.5}
 .sec{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,234,240,0.3);
-  margin:20px 0 12px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.06)}
-.hint{font-size:12px;color:rgba(232,234,240,0.4);margin-bottom:14px;line-height:1.7}
+  margin:20px 0 8px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)}
+.hint{font-size:12px;color:rgba(232,234,240,0.45);line-height:1.7;margin-bottom:4px}
 a{color:#60a5fa}
 .sp{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);
   border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block;margin-right:8px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+code{background:rgba(59,130,246,0.15);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:12px;color:#93c5fd}
 </style></head><body>
 <div class="card">
   <h1>⌚ Garmin Advisor Setup</h1>
-  <p class="sub">Cookies aus dem Browser kopieren &rarr; Token generieren &rarr; in Railway speichern.</p>
-
+  <p class="sub">Cookies aus dem Browser kopieren → Token generieren → in Railway speichern.</p>
   <div class="status """ + status_cls + '">' + status_msg + """</div>
 
-  <p class="sec">1 – In Garmin Connect einloggen</p>
-  <p class="hint">Öffne <a href="https://connect.garmin.com" target="_blank">connect.garmin.com</a> und logge dich ein.</p>
-
-  <p class="sec">2 – Cookies kopieren</p>
+  <p class="sec">Anleitung</p>
   <p class="hint">
-    <b>Desktop:</b> F12 &rarr; Application &rarr; Cookies &rarr; connect.garmin.com<br>
-    <b>iPhone Safari:</b> Einstellungen &rarr; Safari &rarr; Erweitert &rarr; Web-Inspektor, dann Mac &rarr; Entwickler &rarr; dein iPhone
+    1. Öffne <a href="https://connect.garmin.com/modern/main" target="_blank">connect.garmin.com/modern/main</a> und logge dich ein<br>
+    2. Drücke <code>F12</code> → Tab <b>Anwendung</b> (oder <b>Application</b>)<br>
+    3. Links: <b>Cookies</b> → <code>https://connect.garmin.com</code><br>
+    4. Kopiere die Werte der folgenden Cookies:
   </p>
 
-  <label>JWT_FGP</label>
-  <input id="jwt" type="text" placeholder="Langer String..." autocapitalize="none" autocorrect="off" spellcheck="false">
-  <label>GARMIN-SSO-GUID</label>
-  <input id="guid" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocapitalize="none" autocorrect="off" spellcheck="false">
+  <label>JWT_WEB</label>
+  <input id="jwt_web" type="text" placeholder="eyJ..." autocapitalize="none" autocorrect="off" spellcheck="false">
+
+  <label>GARMIN-SSO-cust-GUID</label>
+  <input id="sso_guid" type="text" placeholder="xxxxxxxx-xxxx-..." autocapitalize="none" autocorrect="off" spellcheck="false">
+
+  <label>SESSIONID (optional aber empfohlen)</label>
+  <input id="sessionid" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
+
+  <label>GARMIN-SSO (optional)</label>
+  <input id="garmin_sso" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
 
   <button id="btn" onclick="go()">Token generieren & validieren</button>
   <div class="err" id="err"></div>
@@ -207,25 +216,34 @@ a{color:#60a5fa}
     <div class="token-box" id="tokenBox"></div>
     <button class="copy-btn" onclick="copy()">📋 Token kopieren</button>
     <div class="step"><div class="sn">1</div><span>Token oben kopieren</span></div>
-    <div class="step"><div class="sn">2</div><span>Railway &rarr; Projekt &rarr; <b>Variables &rarr; New Variable</b></span></div>
-    <div class="step"><div class="sn">3</div><span>Name: <b>GARMIN_TOKEN</b> &nbsp;·&nbsp; Value: Token einfügen &rarr; Speichern</span></div>
-    <div class="step"><div class="sn">4</div><span>Railway startet neu &rarr; App öffnen &rarr; fertig! 🎉</span></div>
+    <div class="step"><div class="sn">2</div><span>Railway → Projekt → <b>Variables → New Variable</b></span></div>
+    <div class="step"><div class="sn">3</div><span>Name: <code>GARMIN_TOKEN</code> · Value: Token einfügen → Speichern</span></div>
+    <div class="step"><div class="sn">4</div><span>Railway startet neu → App auf Handy öffnen → fertig! 🎉</span></div>
   </div>
 </div>
 <script>
 let tok='';
 async function go(){
-  const jwt=document.getElementById('jwt').value.trim();
-  const guid=document.getElementById('guid').value.trim();
+  const cookies={
+    type:'cookie',
+    'JWT_WEB': document.getElementById('jwt_web').value.trim(),
+    'GARMIN-SSO-cust-GUID': document.getElementById('sso_guid').value.trim(),
+    'SESSIONID': document.getElementById('sessionid').value.trim(),
+    'GARMIN-SSO': document.getElementById('garmin_sso').value.trim(),
+  };
   document.getElementById('err').style.display='none';
   document.getElementById('result').style.display='none';
-  if(!jwt||!guid){showErr('Bitte beide Felder ausfüllen.');return;}
+  if(!cookies['JWT_WEB']||!cookies['GARMIN-SSO-cust-GUID']){
+    showErr('Bitte mindestens JWT_WEB und GARMIN-SSO-cust-GUID eingeben.');return;
+  }
+  // Leere optionale Felder entfernen
+  Object.keys(cookies).forEach(k=>{ if(!cookies[k]) delete cookies[k]; });
   const btn=document.getElementById('btn');
   btn.disabled=true;btn.innerHTML='<span class="sp"></span>Validiere bei Garmin…';
   try{
     const res=await fetch('/set-token',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({jwt_fgp:jwt,garmin_sso_guid:guid})});
+      body:JSON.stringify({cookies})});
     const data=await res.json();
     if(!data.ok) throw new Error(data.error);
     tok=data.token;
@@ -250,24 +268,27 @@ function showErr(m){const e=document.getElementById('err');e.textContent=m;e.sty
 @app.route("/set-token", methods=["POST"])
 def set_token():
     body = request.get_json() or {}
-    jwt_fgp = body.get("jwt_fgp", "").strip()
-    garmin_sso_guid = body.get("garmin_sso_guid", "").strip()
-    if not jwt_fgp or not garmin_sso_guid:
-        return jsonify({"ok": False, "error": "Beide Cookie-Werte erforderlich"}), 400
+    cookies = body.get("cookies", {})
+    if not cookies.get("JWT_WEB") or not cookies.get("GARMIN-SSO-cust-GUID"):
+        return jsonify({"ok": False, "error": "JWT_WEB und GARMIN-SSO-cust-GUID sind Pflichtfelder"}), 400
+
     session = req.Session()
     session.headers.update(HEADERS)
-    session.cookies.set("JWT_FGP", jwt_fgp, domain=".garmin.com")
-    session.cookies.set("GARMIN-SSO-GUID", garmin_sso_guid, domain=".garmin.com")
+    for name, value in cookies.items():
+        if name != "type" and value:
+            session.cookies.set(name, value, domain=".garmin.com")
+
     try:
         r = session.get(
             f"{GARMIN_API}/userprofile-service/userprofile/personal-information",
             timeout=10
         )
+        print(f"Validation status: {r.status_code}")
         if r.status_code == 401:
-            return jsonify({"ok": False, "error": "Cookies ungültig oder abgelaufen. Bitte neu einloggen."}), 401
+            return jsonify({"ok": False, "error": "Cookies ungültig oder abgelaufen. Bitte neu in Garmin Connect einloggen."}), 401
         if r.status_code != 200:
-            return jsonify({"ok": False, "error": f"Garmin Status {r.status_code} – Cookies prüfen."}), 400
-        token_data = json.dumps({"type": "cookie", "JWT_FGP": jwt_fgp, "GARMIN-SSO-GUID": garmin_sso_guid})
+            return jsonify({"ok": False, "error": f"Garmin antwortet mit Status {r.status_code}. Bitte alle Cookies nochmals prüfen."}), 400
+        token_data = json.dumps(cookies)
         return jsonify({"ok": True, "token": token_data})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
