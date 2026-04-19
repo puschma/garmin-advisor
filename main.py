@@ -322,21 +322,24 @@ def debug():
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 401
     today = date.today().isoformat()
-    user_id = get_user_id(session)
-    endpoints = {
-        "user_id": user_id,
-        "sleep": f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{today}",
-        "sleep_uid": f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{user_id}/{today}" if user_id else None,
-        "activities": f"{GARMIN_API}/activitylist-service/activities/search/activities",
-        "hrv": f"{GARMIN_API}/hrv-service/hrv/{today}",
+    # Teste verschiedene API-Basis-URLs
+    test_urls = {
+        "proxy_sleep":      f"https://connect.garmin.com/proxy/wellness-service/wellness/dailySleepData/{today}",
+        "modern_sleep":     f"https://connect.garmin.com/modern/proxy/wellness-service/wellness/dailySleepData/{today}",
+        "api_sleep":        f"https://connect.garmin.com/api/wellness-service/wellness/dailySleepData/{today}",
+        "proxy_activities": f"https://connect.garmin.com/proxy/activitylist-service/activities/search/activities",
+        "modern_activities":f"https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities",
+        "proxy_profile":    f"https://connect.garmin.com/proxy/userprofile-service/socialProfile",
+        "modern_profile":   f"https://connect.garmin.com/modern/proxy/userprofile-service/socialProfile",
+        "currentuser":      f"https://connect.garmin.com/modern/currentuser-service/user/info",
+        "user_info":        f"https://connect.garmin.com/userprofile-service/socialProfile",
     }
-    results = {"user_id": user_id}
-    for name, url in endpoints.items():
-        if not url or name == "user_id":
-            continue
+    results = {}
+    for name, url in test_urls.items():
         try:
             r = session.get(url, timeout=10)
-            results[name] = {"status": r.status_code, "preview": r.text[:300]}
+            preview = r.text[:200] if r.text else ""
+            results[name] = {"status": r.status_code, "preview": preview, "empty": r.text.strip() in ("{}", "null", "[]", "")}
         except Exception as e:
             results[name] = {"error": str(e)}
     return jsonify({"ok": True, "results": results})
