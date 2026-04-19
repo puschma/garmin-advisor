@@ -19,29 +19,62 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
-# ─── Token-Speicherung im Dateisystem (Railway persistent volume oder /tmp) ───
-TOKEN_DIR = os.environ.get("TOKEN_DIR", "/tmp/garmin_tokens")
+# ─── In-memory Client Cache (überlebt mehrere Requests im selben Prozess) ───
+_client_cache = {}   # email -> Garmin client
+TOKEN_DIR = "/tmp/garmin_tokens"
 os.makedirs(TOKEN_DIR, exist_ok=True)
 
-def token_path(user_id):
-    safe = "".join(c for c in user_id if c.isalnum() or c in "-_")
+def token_path(email):
+    safe = "".join(c for c in email if c.isalnum() or c in "-_")
     return os.path.join(TOKEN_DIR, f"{safe}.json")
 
 def get_client(email, password):
-    client = Garmin(email, password)
+    """
+    Gibt einen authentifizierten Garmin-Client zurück.
+    Reihenfolge: 1) RAM-Cache  2) Datei-Token  3) Frischer Login
+    Login wird nur einmal gemacht und dann gecacht.
+    """
+    # 1. RAM-Cache (schnellster Weg, kein Netzwerk)
+    if email in _client_cache:
+        try:
+            c = _client_cache[email]
+            _ = c.display_name   # prüfen ob Session noch aktiv
+            print(f"✅ RAM-Cache verwendet für {email}")
+            return c
+        except Exception:
+            del _client_cache[email]
+            print("🔄 RAM-Cache abgelaufen")
+
+    # 2. Gespeicherter Token (überlebt Railway-Sleeps)
     tp = token_path(email)
     if os.path.exists(tp):
         try:
+            c = Garmin(email, password)
             with open(tp) as f:
-                client.garth.loads(f.read())
-            _ = client.display_name  # Validierung
-            return client
-        except Exception:
-            pass
-    client.login()
-    with open(tp, "w") as f:
-        f.write(client.garth.dumps())
-    return client
+                c.garth.loads(f.read())
+            _ = c.display_name   # Validierung
+            _client_cache[email] = c
+            print(f"✅ Datei-Token verwendet für {email}")
+            return c
+        except Exception as e:
+            print(f"🔄 Datei-Token ungültig: {e}")
+            try:
+                os.remove(tp)
+            except Exception:
+                pass
+
+    # 3. Frischer Login (nur wenn kein gültiger Token vorhanden)
+    print(f"🔐 Frischer Login für {email}")
+    c = Garmin(email, password)
+    c.login()
+    # Token für nächste Mal speichern
+    try:
+        with open(tp, "w") as f:
+            f.write(c.garth.dumps())
+    except Exception as e:
+        print(f"⚠️ Token konnte nicht gespeichert werden: {e}")
+    _client_cache[email] = c
+    return c
 
 def to_hours(secs):
     return round((secs or 0) / 3600, 1)
@@ -156,7 +189,20 @@ def data():
         training = fetch_training(client)
         return jsonify({"ok": True, "sleep": sleep, "training": training})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        err = str(e)
+        # Bei 429: Cache leeren damit nächster Versuch einen neuen Token holt
+        if "429" in err or "Too Many Requests" in err:
+            _client_cache.pop(email, None)
+            tp = token_path(email)
+            try:
+                os.remove(tp)
+            except Exception:
+                pass
+            return jsonify({
+                "ok": False,
+                "error": "Garmin hat zu viele Anfragen erkannt (429). Bitte 5–10 Minuten warten und es erneut versuchen."
+            }), 429
+        return jsonify({"ok": False, "error": err}), 500
 
 @app.route("/health")
 def health():
