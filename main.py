@@ -301,6 +301,35 @@ def set_token():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/debug", methods=["POST"])
+def debug():
+    """Testet alle Garmin-Endpunkte und gibt zurück welche funktionieren."""
+    try:
+        session = get_session()
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 401
+
+    today = date.today().isoformat()
+    endpoints = {
+        "sleep": f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{today}",
+        "activities": f"{GARMIN_API}/activitylist-service/activities/search/activities",
+        "usersummary": f"{GARMIN_API}/usersummary-service/usersummary/daily/{today}",
+        "userprofile": f"{GARMIN_API}/userprofile-service/socialProfile",
+        "hrv": f"{GARMIN_API}/hrv-service/hrv/{today}",
+    }
+    results = {}
+    for name, url in endpoints.items():
+        try:
+            r = session.get(url, timeout=10)
+            results[name] = {"status": r.status_code, "url": url}
+            if r.status_code == 200:
+                # Zeige ersten 200 Zeichen der Antwort
+                results[name]["preview"] = str(r.text)[:200]
+        except Exception as e:
+            results[name] = {"status": "error", "error": str(e)}
+    return jsonify({"ok": True, "results": results})
+
+
 @app.route("/health")
 def health():
     return jsonify({"ok": True})
