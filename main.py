@@ -14,7 +14,7 @@ import requests as req
 app = Flask(__name__)
 CORS(app)
 
-GARMIN_API = "https://connect.garmin.com/modern/proxy"
+GARMIN_API = "https://connect.garmin.com/proxy"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "NK": "NT",
@@ -278,18 +278,25 @@ def set_token():
         if name != "type" and value:
             session.cookies.set(name, value, domain=".garmin.com")
 
+    # Mehrere Endpoints versuchen – Garmin ändert URLs regelmäßig
+    test_urls = [
+        f"{GARMIN_API}/usersummary-service/usersummary/daily/{date.today().isoformat()}",
+        f"{GARMIN_API}/userprofile-service/socialProfile",
+        f"{GARMIN_API}/userprofile-service/userprofile/user-settings",
+        "https://connect.garmin.com/modern/currentuser-service/user/info",
+    ]
+    last_status = None
     try:
-        r = session.get(
-            f"{GARMIN_API}/userprofile-service/userprofile/personal-information",
-            timeout=10
-        )
-        print(f"Validation status: {r.status_code}")
-        if r.status_code == 401:
-            return jsonify({"ok": False, "error": "Cookies ungültig oder abgelaufen. Bitte neu in Garmin Connect einloggen."}), 401
-        if r.status_code != 200:
-            return jsonify({"ok": False, "error": f"Garmin antwortet mit Status {r.status_code}. Bitte alle Cookies nochmals prüfen."}), 400
-        token_data = json.dumps(cookies)
-        return jsonify({"ok": True, "token": token_data})
+        for url in test_urls:
+            r = session.get(url, timeout=10)
+            print(f"Validation {url}: {r.status_code}")
+            if r.status_code == 200:
+                token_data = json.dumps(cookies)
+                return jsonify({"ok": True, "token": token_data})
+            elif r.status_code == 401:
+                return jsonify({"ok": False, "error": "Cookies ungültig oder abgelaufen. Bitte neu in Garmin Connect einloggen."}), 401
+            last_status = r.status_code
+        return jsonify({"ok": False, "error": f"Alle Garmin-Endpunkte nicht erreichbar (letzter Status: {last_status}). Bitte SESSIONID und GARMIN-SSO auch eintragen."}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
