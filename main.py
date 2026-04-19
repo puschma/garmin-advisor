@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Garmin Training Advisor – Cloud Backend für Railway
-Authentifizierung via Browser-Cookies (JWT_WEB + GARMIN-SSO-cust-GUID)
+Authentifizierung via Browser-Cookies
 """
 
 import json
@@ -25,42 +25,63 @@ HEADERS = {
     "Referer": "https://connect.garmin.com/modern/",
 }
 
-def make_session(token):
-    """Baut eine requests.Session mit allen verfügbaren Garmin-Cookies."""
-    session = req.Session()
-    session.headers.update(HEADERS)
-    # Alle gespeicherten Cookies setzen
-    for name, value in token.items():
-        if name == "type":
-            continue
-        session.cookies.set(name, value, domain=".garmin.com")
-    return session
-
 def get_session():
     token_str = os.environ.get("GARMIN_TOKEN", "")
     if not token_str:
-        raise ValueError("GARMIN_TOKEN nicht gesetzt. Bitte Setup-Seite aufrufen.")
+        raise ValueError("GARMIN_TOKEN nicht gesetzt.")
     token = json.loads(token_str)
-    return make_session(token)
+    session = req.Session()
+    session.headers.update(HEADERS)
+    for name, value in token.items():
+        if name != "type" and value:
+            session.cookies.set(name, value, domain=".garmin.com")
+    return session
+
+def get_user_id(session):
+    """Holt Display-Name als User-ID."""
+    urls = [
+        f"{GARMIN_API}/userprofile-service/socialProfile",
+        "https://connect.garmin.com/modern/currentuser-service/user/info",
+        f"{GARMIN_API}/userprofile-service/profile/user-settings",
+    ]
+    for url in urls:
+        try:
+            r = session.get(url, timeout=10)
+            if r.status_code == 200 and r.text not in ("{}", "null", ""):
+                data = r.json()
+                uid = (data.get("displayName") or data.get("userName")
+                       or data.get("username") or data.get("userId"))
+                if uid:
+                    print(f"User ID: {uid} from {url}")
+                    return str(uid)
+        except Exception as e:
+            print(f"get_user_id {url}: {e}")
+    return None
 
 def to_hours(secs):
     return round((secs or 0) / 3600, 1)
 
-def fetch_sleep(session, days=7):
+def fetch_sleep(session, days=7, user_id=None):
     results = []
     today = date.today()
     for i in range(days - 1, -1, -1):
         d = (today - timedelta(days=i)).isoformat()
         try:
-            r = session.get(
-                f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{d}",
-                params={"date": d, "nonSleepBufferMinutes": 60},
-                timeout=15
-            )
-            if r.status_code != 200:
-                print(f"Sleep {d}: HTTP {r.status_code}")
+            urls = [f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{d}"]
+            if user_id:
+                urls.insert(0, f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{user_id}/{d}")
+
+            raw = None
+            for url in urls:
+                r = session.get(url, params={"date": d, "nonSleepBufferMinutes": 60}, timeout=15)
+                print(f"Sleep {d}: {r.status_code} {r.text[:80]}")
+                if r.status_code == 200 and r.text.strip() not in ("{}", "null", "[]", ""):
+                    raw = r.json()
+                    break
+
+            if not raw:
                 continue
-            raw = r.json()
+
             dto = raw.get("dailySleepDTO", {})
             scores = dto.get("sleepScores", {})
             hrv_summary = raw.get("hrvSummary", {})
@@ -86,7 +107,7 @@ def fetch_sleep(session, days=7):
             print(f"Sleep {d}: {e}")
     return results
 
-def fetch_training(session, days=7):
+def fetch_training(session, days=7, user_id=None):
     TYPE_MAP = {
         "running": ("Laufen", "🏃"), "cycling": ("Radfahren", "🚴"),
         "swimming": ("Schwimmen", "🏊"), "lap_swimming": ("Schwimmen", "🏊"),
@@ -99,16 +120,28 @@ def fetch_training(session, days=7):
     today = date.today()
     start = (today - timedelta(days=days)).isoformat()
     end = today.isoformat()
-    try:
-        r = session.get(
-            f"{GARMIN_API}/activitylist-service/activities/search/activities",
-            params={"startDate": start, "endDate": end, "limit": 30, "start": 0},
-            timeout=15
-        )
-        activities = r.json() if r.status_code == 200 else []
-    except Exception as e:
-        print(f"Activities: {e}")
-        activities = []
+
+    activities = []
+    urls = [
+        f"{GARMIN_API}/activitylist-service/activities/search/activities",
+    ]
+    if user_id:
+        urls.insert(0, f"{GARMIN_API}/activitylist-service/activities/{user_id}")
+
+    for url in urls:
+        try:
+            r = session.get(url, params={"startDate": start, "endDate": end, "limit": 30, "start": 0}, timeout=15)
+            print(f"Training: {r.status_code} {r.text[:80]}")
+            if r.status_code == 200 and r.text.strip() not in ("{}", "null", "[]", ""):
+                data = r.json()
+                if isinstance(data, list) and len(data) > 0:
+                    activities = data
+                    break
+                elif isinstance(data, dict) and data.get("activityList"):
+                    activities = data["activityList"]
+                    break
+        except Exception as e:
+            print(f"Training {url}: {e}")
 
     results = []
     existing = set()
@@ -134,14 +167,14 @@ def fetch_training(session, days=7):
     return results[-days:]
 
 # ══════════════════════════════════════════════
-# SETUP PAGE
+# ROUTES
 # ══════════════════════════════════════════════
 
 @app.route("/")
 def index():
     has_token = bool(os.environ.get("GARMIN_TOKEN"))
     status_cls = "ok" if has_token else "warn"
-    status_msg = "✅ GARMIN_TOKEN gesetzt. Server einsatzbereit." if has_token else "⚠️ GARMIN_TOKEN fehlt. Bitte unten generieren."
+    status_msg = "✅ GARMIN_TOKEN gesetzt. Server einsatzbereit." if has_token else "⚠️ GARMIN_TOKEN fehlt."
     html = """<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Garmin Setup</title>
@@ -174,78 +207,63 @@ button:disabled{opacity:0.45;cursor:not-allowed}
   font-size:11px;font-weight:700;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .err{margin-top:14px;padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);
   border-radius:10px;font-size:13px;color:#fca5a5;display:none;line-height:1.5}
+.hint{font-size:12px;color:rgba(232,234,240,0.45);line-height:1.7;margin-bottom:4px}
 .sec{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,234,240,0.3);
   margin:20px 0 8px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)}
-.hint{font-size:12px;color:rgba(232,234,240,0.45);line-height:1.7;margin-bottom:4px}
-a{color:#60a5fa}
+a{color:#60a5fa} code{background:rgba(59,130,246,0.15);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:12px;color:#93c5fd}
 .sp{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);
   border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block;margin-right:8px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-code{background:rgba(59,130,246,0.15);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:12px;color:#93c5fd}
 </style></head><body>
 <div class="card">
   <h1>⌚ Garmin Advisor Setup</h1>
   <p class="sub">Cookies aus dem Browser kopieren → Token generieren → in Railway speichern.</p>
   <div class="status """ + status_cls + '">' + status_msg + """</div>
-
-  <p class="sec">Anleitung</p>
   <p class="hint">
-    1. Öffne <a href="https://connect.garmin.com/modern/main" target="_blank">connect.garmin.com/modern/main</a> und logge dich ein<br>
-    2. Drücke <code>F12</code> → Tab <b>Anwendung</b> (oder <b>Application</b>)<br>
-    3. Links: <b>Cookies</b> → <code>https://connect.garmin.com</code><br>
-    4. Kopiere die Werte der folgenden Cookies:
+    1. <a href="https://connect.garmin.com/modern/main" target="_blank">connect.garmin.com</a> öffnen &amp; einloggen<br>
+    2. <code>F12</code> → Anwendung → Cookies → connect.garmin.com
   </p>
-
-  <label>JWT_WEB</label>
-  <input id="jwt_web" type="text" placeholder="eyJ..." autocapitalize="none" autocorrect="off" spellcheck="false">
-
-  <label>GARMIN-SSO-cust-GUID</label>
-  <input id="sso_guid" type="text" placeholder="xxxxxxxx-xxxx-..." autocapitalize="none" autocorrect="off" spellcheck="false">
-
-  <label>SESSIONID (optional aber empfohlen)</label>
-  <input id="sessionid" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
-
-  <label>GARMIN-SSO (optional)</label>
-  <input id="garmin_sso" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
-
-  <button id="btn" onclick="go()">Token generieren & validieren</button>
+  <label>JWT_WEB *</label>
+  <input id="c1" type="text" placeholder="eyJ..." autocapitalize="none" autocorrect="off" spellcheck="false">
+  <label>GARMIN-SSO-cust-GUID *</label>
+  <input id="c2" type="text" placeholder="xxxxxxxx-xxxx-..." autocapitalize="none" autocorrect="off" spellcheck="false">
+  <label>SESSIONID</label>
+  <input id="c3" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
+  <label>GARMIN-SSO</label>
+  <input id="c4" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
+  <label>TASESSIONID</label>
+  <input id="c5" type="text" placeholder="optional" autocapitalize="none" autocorrect="off" spellcheck="false">
+  <button id="btn" onclick="go()">Token generieren &amp; validieren</button>
   <div class="err" id="err"></div>
-
   <div class="result" id="result">
-    <h3>✅ Cookies validiert – Token bereit!</h3>
+    <h3>✅ Token bereit!</h3>
     <div class="token-box" id="tokenBox"></div>
     <button class="copy-btn" onclick="copy()">📋 Token kopieren</button>
-    <div class="step"><div class="sn">1</div><span>Token oben kopieren</span></div>
-    <div class="step"><div class="sn">2</div><span>Railway → Projekt → <b>Variables → New Variable</b></span></div>
-    <div class="step"><div class="sn">3</div><span>Name: <code>GARMIN_TOKEN</code> · Value: Token einfügen → Speichern</span></div>
-    <div class="step"><div class="sn">4</div><span>Railway startet neu → App auf Handy öffnen → fertig! 🎉</span></div>
+    <div class="step"><div class="sn">1</div><span>Token kopieren</span></div>
+    <div class="step"><div class="sn">2</div><span>Railway → Variables → <code>GARMIN_TOKEN</code> ersetzen</span></div>
+    <div class="step"><div class="sn">3</div><span>Railway startet neu → App öffnen 🎉</span></div>
   </div>
 </div>
 <script>
 let tok='';
 async function go(){
-  const cookies={
-    type:'cookie',
-    'JWT_WEB': document.getElementById('jwt_web').value.trim(),
-    'GARMIN-SSO-cust-GUID': document.getElementById('sso_guid').value.trim(),
-    'SESSIONID': document.getElementById('sessionid').value.trim(),
-    'GARMIN-SSO': document.getElementById('garmin_sso').value.trim(),
+  const cookies={type:'cookie',
+    'JWT_WEB':document.getElementById('c1').value.trim(),
+    'GARMIN-SSO-cust-GUID':document.getElementById('c2').value.trim(),
+    'SESSIONID':document.getElementById('c3').value.trim(),
+    'GARMIN-SSO':document.getElementById('c4').value.trim(),
+    'TASESSIONID':document.getElementById('c5').value.trim(),
   };
   document.getElementById('err').style.display='none';
   document.getElementById('result').style.display='none';
-  if(!cookies['JWT_WEB']||!cookies['GARMIN-SSO-cust-GUID']){
-    showErr('Bitte mindestens JWT_WEB und GARMIN-SSO-cust-GUID eingeben.');return;
-  }
-  // Leere optionale Felder entfernen
-  Object.keys(cookies).forEach(k=>{ if(!cookies[k]) delete cookies[k]; });
+  if(!cookies['JWT_WEB']||!cookies['GARMIN-SSO-cust-GUID']){showErr('JWT_WEB und GARMIN-SSO-cust-GUID sind Pflicht.');return;}
+  Object.keys(cookies).forEach(k=>{if(!cookies[k])delete cookies[k];});
   const btn=document.getElementById('btn');
-  btn.disabled=true;btn.innerHTML='<span class="sp"></span>Validiere bei Garmin…';
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span>Validiere…';
   try{
-    const res=await fetch('/set-token',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({cookies})});
+    const res=await fetch('/set-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies})});
     const data=await res.json();
-    if(!data.ok) throw new Error(data.error);
+    if(!data.ok)throw new Error(data.error);
     tok=data.token;
     document.getElementById('tokenBox').textContent=tok;
     document.getElementById('result').style.display='block';
@@ -278,55 +296,49 @@ def set_token():
         if name != "type" and value:
             session.cookies.set(name, value, domain=".garmin.com")
 
-    # Mehrere Endpoints versuchen – Garmin ändert URLs regelmäßig
     test_urls = [
-        f"{GARMIN_API}/usersummary-service/usersummary/daily/{date.today().isoformat()}",
         f"{GARMIN_API}/userprofile-service/socialProfile",
-        f"{GARMIN_API}/userprofile-service/userprofile/user-settings",
+        f"{GARMIN_API}/usersummary-service/usersummary/daily/{date.today().isoformat()}",
         "https://connect.garmin.com/modern/currentuser-service/user/info",
     ]
-    last_status = None
-    try:
-        for url in test_urls:
+    for url in test_urls:
+        try:
             r = session.get(url, timeout=10)
-            print(f"Validation {url}: {r.status_code}")
+            print(f"Validate {url}: {r.status_code} {r.text[:100]}")
             if r.status_code == 200:
-                token_data = json.dumps(cookies)
-                return jsonify({"ok": True, "token": token_data})
-            elif r.status_code == 401:
-                return jsonify({"ok": False, "error": "Cookies ungültig oder abgelaufen. Bitte neu in Garmin Connect einloggen."}), 401
-            last_status = r.status_code
-        return jsonify({"ok": False, "error": f"Alle Garmin-Endpunkte nicht erreichbar (letzter Status: {last_status}). Bitte SESSIONID und GARMIN-SSO auch eintragen."}), 400
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+                return jsonify({"ok": True, "token": json.dumps(cookies)})
+            if r.status_code == 401:
+                return jsonify({"ok": False, "error": "Cookies ungültig. Bitte neu einloggen."}), 401
+        except Exception as e:
+            print(f"Validate error: {e}")
+
+    return jsonify({"ok": False, "error": "Garmin konnte nicht erreicht werden. Bitte alle Cookies eintragen."}), 400
 
 
 @app.route("/debug", methods=["POST"])
 def debug():
-    """Testet alle Garmin-Endpunkte und gibt zurück welche funktionieren."""
     try:
         session = get_session()
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 401
-
     today = date.today().isoformat()
+    user_id = get_user_id(session)
     endpoints = {
+        "user_id": user_id,
         "sleep": f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{today}",
+        "sleep_uid": f"{GARMIN_API}/wellness-service/wellness/dailySleepData/{user_id}/{today}" if user_id else None,
         "activities": f"{GARMIN_API}/activitylist-service/activities/search/activities",
-        "usersummary": f"{GARMIN_API}/usersummary-service/usersummary/daily/{today}",
-        "userprofile": f"{GARMIN_API}/userprofile-service/socialProfile",
         "hrv": f"{GARMIN_API}/hrv-service/hrv/{today}",
     }
-    results = {}
+    results = {"user_id": user_id}
     for name, url in endpoints.items():
+        if not url or name == "user_id":
+            continue
         try:
             r = session.get(url, timeout=10)
-            results[name] = {"status": r.status_code, "url": url}
-            if r.status_code == 200:
-                # Zeige ersten 200 Zeichen der Antwort
-                results[name]["preview"] = str(r.text)[:200]
+            results[name] = {"status": r.status_code, "preview": r.text[:300]}
         except Exception as e:
-            results[name] = {"status": "error", "error": str(e)}
+            results[name] = {"error": str(e)}
     return jsonify({"ok": True, "results": results})
 
 
@@ -339,8 +351,10 @@ def health():
 def data():
     try:
         session = get_session()
-        sleep = fetch_sleep(session)
-        training = fetch_training(session)
+        user_id = get_user_id(session)
+        print(f"Fetching data for user_id: {user_id}")
+        sleep = fetch_sleep(session, user_id=user_id)
+        training = fetch_training(session, user_id=user_id)
         return jsonify({"ok": True, "sleep": sleep, "training": training})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 401
