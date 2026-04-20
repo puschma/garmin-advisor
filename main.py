@@ -235,10 +235,10 @@ def data():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    """KI-Analyse läuft über Railway – kein CORS-Problem mehr."""
     body = request.get_json() or {}
     sleep = body.get("sleep", [])
     training = body.get("training", [])
+    profile = body.get("profile", {})
 
     if not sleep:
         return jsonify({"ok": False, "error": "Keine Schlafdaten"}), 400
@@ -248,35 +248,68 @@ def analyze():
     avg_hrv = round(sum(hrv_vals) / len(hrv_vals)) if hrv_vals else 0
     total_load = sum(t.get("load", 0) for t in training)
 
-    prompt = f"""Du bist ein erfahrener Sportcoach und Schlafmediziner. Analysiere diese Garmin-Daten auf Deutsch, präzise und datenbasiert:
+    # Profil-Zusammenfassung
+    profile_text = ""
+    if profile:
+        profile_text = f"""
+ATHLETEN-PROFIL:
+- Ziel: {profile.get('goal', 'nicht angegeben')}
+- Fitness-Level: {profile.get('level', 'nicht angegeben')}
+- Alter: {profile.get('age', '?')} Jahre
+- Gewicht: {profile.get('weight', '?')} kg
+- Geschlecht: {profile.get('gender', '?')}
+- Geplante Trainingstage/Woche: {profile.get('days', '?')}
+"""
 
-SCHLAF (7 Tage):
+    prompt = f"""Du bist ein erfahrener Personal Trainer und Schlafmediziner. Erstelle eine hochpersonalisierte Trainingsanalyse auf Deutsch.
+{profile_text}
+SCHLAFDATEN (letzte 7 Tage):
 {chr(10).join(f"• {s['date']}: {s['duration']}h | Tief {s['deepSleep']}h | REM {s['remSleep']}h | Score {s.get('score') or '?'} | HRV {s.get('hrv') or '?'}ms" for s in sleep)}
 
-TRAINING (7 Tage):
+TRAININGSDATEN (letzte 7 Tage):
 {chr(10).join(f"• {t['date']}: {t['type']} {t['duration']}min | Load {t['load']} | {t['calories']}kcal" for t in training)}
 
-HRV heute: {today.get('hrv') or '?'}ms | Ø 7 Tage: {avg_hrv}ms | Wochenload: {total_load} ATL
+KENNZAHLEN:
+- HRV heute: {today.get('hrv') or '?'}ms | Ø 7 Tage: {avg_hrv}ms
+- Wochenbelastung: {total_load} ATL
 
-🔋 ERHOLUNGSSTATUS — konkrete Bewertung mit Datenbezug
-🏋️ HEUTE — Typ, Dauer, Intensität, warum
-📅 DIESE WOCHE — 5-Tage-Plan Mo–Fr
-😴 SCHLAF-TIPPS — 2–3 datenbasierte Tipps
-⚡ WICHTIGSTE ERKENNTNIS — eine Sache"""
+Berücksichtige das Athleten-Profil bei ALLEN Empfehlungen. Passe Intensität, Volumen und Ziele an.
+
+🔋 ERHOLUNGSSTATUS
+Bewerte die aktuelle Erholung konkret – bezogen auf HRV-Trend und Schlafqualität.
+
+🏋️ EMPFEHLUNG FÜR HEUTE
+Konkretes Training: Typ, Dauer, Intensität (passend zum Ziel und Fitness-Level). Warum genau das?
+
+📅 WOCHENPLAN
+{profile.get('days', 4)}-Tage-Plan passend zum Ziel "{profile.get('goal', 'Gesund bleiben')}". Konkret mit Einheiten.
+
+😴 SCHLAF-OPTIMIERUNG
+2–3 datenbasierte Tipps speziell für diesen Athleten.
+
+⚡ WICHTIGSTE ERKENNTNIS
+Die eine Sache die dieser Athlet jetzt wissen muss."""
 
     try:
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         res = req.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
             json={
                 "model": "claude-sonnet-4-20250514",
-                "max_tokens": 1000,
+                "max_tokens": 1200,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=30
         )
         data = res.json()
         text = "".join(b.get("text", "") for b in data.get("content", []))
+        if not text:
+            return jsonify({"ok": False, "error": f"Anthropic Fehler: {data}"}), 500
         return jsonify({"ok": True, "text": text})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
