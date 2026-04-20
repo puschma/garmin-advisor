@@ -252,7 +252,6 @@ def analyze():
     avg_hrv = round(sum(hrv_vals) / len(hrv_vals)) if hrv_vals else 0
     total_load = sum(t.get("load", 0) for t in training)
 
-    # Profil-Zusammenfassung
     profile_text = ""
     if profile:
         profile_text = f"""
@@ -277,43 +276,41 @@ KENNZAHLEN:
 - HRV heute: {today.get('hrv') or '?'}ms | Ø 7 Tage: {avg_hrv}ms
 - Wochenbelastung: {total_load} ATL
 
-Berücksichtige das Athleten-Profil bei ALLEN Empfehlungen. Passe Intensität, Volumen und Ziele an.
+Berücksichtige das Athleten-Profil bei ALLEN Empfehlungen.
 
 🔋 ERHOLUNGSSTATUS
-Bewerte die aktuelle Erholung konkret – bezogen auf HRV-Trend und Schlafqualität.
+Bewerte die aktuelle Erholung konkret mit Datenbezug.
 
 🏋️ EMPFEHLUNG FÜR HEUTE
-Konkretes Training: Typ, Dauer, Intensität (passend zum Ziel und Fitness-Level). Warum genau das?
+Konkretes Training: Typ, Dauer, Intensität passend zum Ziel und Fitness-Level. Warum genau das?
 
 📅 WOCHENPLAN
-{profile.get('days', 4)}-Tage-Plan passend zum Ziel "{profile.get('goal', 'Gesund bleiben')}". Konkret mit Einheiten.
+{profile.get('days', 4)}-Tage-Plan passend zum Ziel "{profile.get('goal', 'Gesund bleiben')}".
 
 😴 SCHLAF-OPTIMIERUNG
-2–3 datenbasierte Tipps speziell für diesen Athleten.
+2–3 datenbasierte Tipps.
 
 ⚡ WICHTIGSTE ERKENNTNIS
 Die eine Sache die dieser Athlet jetzt wissen muss."""
 
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY nicht gesetzt. Bitte in Railway Variables eintragen."}), 500
+
     try:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         res = req.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+            headers={"Content-Type": "application/json"},
             json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 1200,
-                "messages": [{"role": "user", "content": prompt}]
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 1200, "temperature": 0.7}
             },
             timeout=30
         )
         data = res.json()
-        text = "".join(b.get("text", "") for b in data.get("content", []))
-        if not text:
-            return jsonify({"ok": False, "error": f"Anthropic Fehler: {data}"}), 500
+        if "error" in data:
+            return jsonify({"ok": False, "error": f"Gemini Fehler: {data['error'].get('message', str(data))}"}), 500
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"ok": True, "text": text})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
