@@ -106,19 +106,21 @@ def get_client(email, password):
     if os.path.exists(tp):
         try:
             c = Garmin(email, password)
-            with open(tp) as f:
-                c.garth.loads(f.read())
+            c.login(tokenstore=tp)
             _ = c.display_name
             _client_cache[email] = c
+            print("✅ Token geladen")
             return c
-        except Exception:
-            os.remove(tp)
+        except Exception as e:
+            print(f"Token ungültig: {e}")
+            try: os.remove(tp)
+            except: pass
 
+    print("🔐 Frischer Login...")
     c = Garmin(email, password)
-    c.login()
-    with open(tp, "w") as f:
-        f.write(c.garth.dumps())
+    c.login(tokenstore=tp)
     _client_cache[email] = c
+    print(f"✅ Eingeloggt: {c.display_name}")
     return c
 
 # ══════════════════════════════════════════════
@@ -350,9 +352,6 @@ def sync():
         client = get_client(email, password)
         acts = sync_activities(client, days)
         health_saved = sync_health(client, days)
-        # Token speichern
-        with open(token_path(email), "w") as f:
-            f.write(client.garth.dumps())
         return jsonify({"ok": True, "activities_saved": acts, "health_saved": health_saved})
     except Exception as e:
         _client_cache.pop(email, None)
