@@ -207,7 +207,72 @@ def fetch_training(client, days=7):
 def index():
     return jsonify({"status": "Garmin Training Advisor API v2"})
 
-@app.route("/health")
+@app.route("/debug-activity", methods=["POST"])
+def debug_activity():
+    """Holt Details der letzten Radeinheit für Diagnose."""
+    body = request.get_json() or {}
+    email = body.get("email", "").strip()
+    password = body.get("password", "")
+    try:
+        client = get_client(email, password)
+        today = date.today()
+        start = (today - timedelta(days=14)).isoformat()
+        activities = client.get_activities_by_date(start, today.isoformat()) or []
+
+        # Finde letzte Radeinheit
+        cycling = [a for a in activities if "cycl" in (a.get("activityType", {}).get("typeKey") or "").lower()
+                   or "virtual" in (a.get("activityType", {}).get("typeKey") or "").lower()]
+
+        if not cycling:
+            return jsonify({"ok": False, "error": "Keine Radeinheit in den letzten 14 Tagen gefunden"})
+
+        last = cycling[0]
+        activity_id = last.get("activityId")
+        print(f"Analysiere Aktivität {activity_id}: {last.get('activityName')}")
+
+        # Detaildaten holen
+        details = {}
+        try:
+            details["summary"] = client.get_activity(activity_id)
+        except Exception as e:
+            details["summary_error"] = str(e)
+
+        try:
+            details["details"] = client.get_activity_details(activity_id)
+        except Exception as e:
+            details["details_error"] = str(e)
+
+        try:
+            details["hr_zones"] = client.get_activity_hr_in_timezones(activity_id)
+        except Exception as e:
+            details["hr_zones_error"] = str(e)
+
+        try:
+            details["power_zones"] = client.get_activity_power_zones(activity_id)
+        except Exception as e:
+            details["power_zones_error"] = str(e)
+
+        return jsonify({
+            "ok": True,
+            "activity_name": last.get("activityName"),
+            "activity_id": activity_id,
+            "date": last.get("startTimeLocal", "")[:10],
+            "available_fields": list(last.keys()),
+            "basic": {
+                "duration_min": round((last.get("duration") or 0) / 60),
+                "distance_km": round((last.get("distance") or 0) / 1000, 1),
+                "avg_power": last.get("avgPower"),
+                "max_power": last.get("maxPower"),
+                "avg_hr": last.get("averageHR"),
+                "max_hr": last.get("maxHR"),
+                "calories": last.get("calories"),
+                "training_load": last.get("activityTrainingLoad"),
+                "vo2max": last.get("vO2MaxValue"),
+            },
+            "details": details
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 def health():
     return jsonify({"ok": True})
 
