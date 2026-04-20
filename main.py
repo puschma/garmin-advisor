@@ -12,8 +12,8 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from garminconnect import Garmin
 import requests as req
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 app = Flask(__name__)
 CORS(app)
@@ -23,7 +23,8 @@ CORS(app)
 # ══════════════════════════════════════════════
 
 def get_db():
-    return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
+    conn = psycopg.connect(os.environ["DATABASE_URL"], sslmode="require")
+    return conn
 
 def init_db():
     with get_db() as conn:
@@ -362,7 +363,7 @@ def dashboard():
     """Gibt alle Dashboard-Daten zurück."""
     try:
         with get_db() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute("""
                     SELECT * FROM activities
                     ORDER BY date DESC LIMIT 20
@@ -415,7 +416,7 @@ def profile():
     else:
         try:
             with get_db() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                with conn.cursor(row_factory=dict_row) as cur:
                     cur.execute("SELECT data FROM profile WHERE id=1")
                     row = cur.fetchone()
             return jsonify({"ok": True, "profile": row["data"] if row else {}})
@@ -435,7 +436,7 @@ def chat():
 
     try:
         with get_db() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with conn.cursor(row_factory=dict_row) as cur:
                 # Profil
                 cur.execute("SELECT data FROM profile WHERE id=1")
                 row = cur.fetchone()
@@ -521,7 +522,7 @@ def history():
     """Gibt den kompletten Chat-Verlauf zurück."""
     try:
         with get_db() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute("""
                     SELECT role, content, created_at::text
                     FROM chat_messages ORDER BY created_at ASC
