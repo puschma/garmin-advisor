@@ -123,11 +123,15 @@ def fetch_sleep(client, days=7):
             elif isinstance(scores.get("totalScore"), (int, float)):
                 score = scores["totalScore"]
 
-            # HRV: zuerst aus hrvSummary, dann separater Endpoint
+            # HRV: Priorität lastNight > lastNightAvg > weeklyAvg
             hrv_summary = raw.get("hrvSummary", {})
             hrv = (hrv_summary.get("lastNight")
-                or hrv_summary.get("weeklyAvg")
-                or hrv_summary.get("lastNightAvg"))
+                or hrv_summary.get("lastNightAvg")
+                or hrv_summary.get("lastNight5MinHigh")
+                or hrv_summary.get("weeklyAvg"))
+
+            # Debug: alle HRV-Felder loggen
+            print(f"HRV fields {d}: {json.dumps({k:v for k,v in hrv_summary.items() if v is not None})}")
 
             if not hrv:
                 hrv = fetch_hrv(client, d)
