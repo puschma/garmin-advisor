@@ -209,7 +209,6 @@ def index():
 
 @app.route("/debug-activity", methods=["POST"])
 def debug_activity():
-    """Holt Details der letzten Radeinheit für Diagnose."""
     body = request.get_json() or {}
     email = body.get("email", "").strip()
     password = body.get("password", "")
@@ -219,58 +218,62 @@ def debug_activity():
         start = (today - timedelta(days=14)).isoformat()
         activities = client.get_activities_by_date(start, today.isoformat()) or []
 
-        # Finde letzte Radeinheit
-        cycling = [a for a in activities if "cycl" in (a.get("activityType", {}).get("typeKey") or "").lower()
-                   or "virtual" in (a.get("activityType", {}).get("typeKey") or "").lower()]
-
+        cycling = [a for a in activities if any(k in (a.get("activityType", {}).get("typeKey") or "").lower()
+                   for k in ["cycl", "virtual", "zwift"])]
         if not cycling:
-            return jsonify({"ok": False, "error": "Keine Radeinheit in den letzten 14 Tagen gefunden"})
+            return jsonify({"ok": False, "error": "Keine Radeinheit gefunden"})
 
         last = cycling[0]
         activity_id = last.get("activityId")
-        print(f"Analysiere Aktivität {activity_id}: {last.get('activityName')}")
 
-        # Detaildaten holen
-        details = {}
-        try:
-            details["summary"] = client.get_activity(activity_id)
-        except Exception as e:
-            details["summary_error"] = str(e)
-
-        try:
-            details["details"] = client.get_activity_details(activity_id)
-        except Exception as e:
-            details["details_error"] = str(e)
-
-        try:
-            details["hr_zones"] = client.get_activity_hr_in_timezones(activity_id)
-        except Exception as e:
-            details["hr_zones_error"] = str(e)
-
-        try:
-            details["power_zones"] = client.get_activity_power_zones(activity_id)
-        except Exception as e:
-            details["power_zones_error"] = str(e)
-
-        return jsonify({
-            "ok": True,
+        result = {
             "activity_name": last.get("activityName"),
-            "activity_id": activity_id,
             "date": last.get("startTimeLocal", "")[:10],
-            "available_fields": list(last.keys()),
-            "basic": {
-                "duration_min": round((last.get("duration") or 0) / 60),
-                "distance_km": round((last.get("distance") or 0) / 1000, 1),
-                "avg_power": last.get("avgPower"),
-                "max_power": last.get("maxPower"),
-                "avg_hr": last.get("averageHR"),
-                "max_hr": last.get("maxHR"),
-                "calories": last.get("calories"),
-                "training_load": last.get("activityTrainingLoad"),
-                "vo2max": last.get("vO2MaxValue"),
-            },
-            "details": details
-        })
+            "duration_min": round((last.get("duration") or 0) / 60),
+            "avg_power": last.get("avgPower"),
+            "norm_power": last.get("normPower"),
+            "max_power": last.get("maxPower"),
+            "max_20min_power": last.get("maxAvgPower_20"),
+            "avg_hr": last.get("averageHR"),
+            "power_zones": {f"Z{i}": last.get(f"powerTimeInZone_{i}") for i in range(1, 8)},
+            "hr_zones": {f"Z{i}": last.get(f"hrTimeInZone_{i}") for i in range(1, 6)},
+            "aerobic_te": last.get("aerobicTrainingEffect"),
+            "anaerobic_te": last.get("anaerobicTrainingEffect"),
+            "splits": [],
+            "intervals": [],
+        }
+
+        # Splits holen
+        try:
+            splits = client.get_activity_splits(activity_id)
+            result["splits_raw"] = splits
+            # Versuche relevante Lap-Daten zu extrahieren
+            laps = splits.get("lapDTOs") or splits.get("laps") or splits if isinstance(splits, list) else []
+            result["splits"] = [{
+                "lap": i+1,
+                "duration_min": round((l.get("duration") or l.get("elapsedDuration") or 0) / 60, 1),
+                "avg_power": l.get("averagePower") or l.get("avgPower"),
+                "avg_hr": l.get("averageHR"),
+                "distance_km": round((l.get("distance") or 0) / 1000, 2),
+            } for i, l in enumerate(laps[:20])]
+        except Exception as e:
+            result["splits_error"] = str(e)
+
+        # Intensity Intervals
+        try:
+            intervals = client.get_activity_intensity_intervals(activity_id)
+            result["intervals_raw_keys"] = list(intervals.keys()) if isinstance(intervals, dict) else str(type(intervals))
+            iv_list = intervals.get("intervalDTOs") or intervals.get("intervals") or []
+            result["intervals"] = [{
+                "type": iv.get("intensityType") or iv.get("type"),
+                "duration_min": round((iv.get("duration") or 0) / 60, 1),
+                "avg_power": iv.get("averagePower") or iv.get("avgPower"),
+                "avg_hr": iv.get("averageHR"),
+            } for iv in iv_list[:20]]
+        except Exception as e:
+            result["intervals_error"] = str(e)
+
+        return jsonify({"ok": True, **result})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
