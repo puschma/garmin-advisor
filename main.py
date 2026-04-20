@@ -1,19 +1,88 @@
 #!/usr/bin/env python3
 """
-Garmin Training Advisor – Cloud Backend für Railway
-garminconnect 0.3.2 + Mobile SSO + KI-Analyse über Server
+Cycling Coach – Railway Backend
+PostgreSQL + Garmin + Anthropic Claude
 """
 
 import json
 import os
-import requests as req
-from datetime import date, timedelta
+import re
+from datetime import date, timedelta, datetime
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from garminconnect import Garmin
+import requests as req
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 CORS(app)
+
+# ══════════════════════════════════════════════
+# DATABASE
+# ══════════════════════════════════════════════
+
+def get_db():
+    return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
+
+def init_db():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS activities (
+                    id BIGINT PRIMARY KEY,
+                    date DATE,
+                    name TEXT,
+                    type TEXT,
+                    duration_min INT,
+                    avg_power INT,
+                    norm_power INT,
+                    max_power INT,
+                    max_20min_power INT,
+                    avg_hr INT,
+                    max_hr INT,
+                    calories INT,
+                    training_load FLOAT,
+                    aerobic_te FLOAT,
+                    anaerobic_te FLOAT,
+                    power_zones JSONB,
+                    hr_zones JSONB,
+                    laps JSONB,
+                    raw JSONB,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS health_data (
+                    date DATE PRIMARY KEY,
+                    sleep_duration FLOAT,
+                    deep_sleep FLOAT,
+                    rem_sleep FLOAT,
+                    sleep_score INT,
+                    hrv INT,
+                    resting_hr INT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id SERIAL PRIMARY KEY,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    activity_id BIGINT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS profile (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    data JSONB,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+        conn.commit()
+    print("✅ DB initialisiert")
+
+# ══════════════════════════════════════════════
+# GARMIN AUTH
+# ══════════════════════════════════════════════
 
 _client_cache = {}
 TOKEN_DIR = "/tmp/garmin_tokens"
@@ -40,379 +109,432 @@ def get_client(email, password):
                 c.garth.loads(f.read())
             _ = c.display_name
             _client_cache[email] = c
-            print("✅ Datei Token")
             return c
-        except Exception as e:
-            print(f"Token ungültig: {e}")
+        except Exception:
             os.remove(tp)
 
-    print("🔐 Frischer Login via Mobile SSO...")
     c = Garmin(email, password)
     c.login()
-    try:
-        with open(tp, "w") as f:
-            f.write(c.garth.dumps())
-    except Exception as e:
-        print(f"Token speichern: {e}")
+    with open(tp, "w") as f:
+        f.write(c.garth.dumps())
     _client_cache[email] = c
-    print(f"✅ Eingeloggt: {c.display_name}")
     return c
+
+# ══════════════════════════════════════════════
+# GARMIN DATA FETCHING
+# ══════════════════════════════════════════════
 
 def to_hours(secs):
     return round((secs or 0) / 3600, 1)
 
-def fetch_hrv(client, d):
-    """Holt HRV-Wert für ein bestimmtes Datum – probiert mehrere Methoden."""
-    try:
-        # Methode 1: get_hrv_data (neuere API)
-        hrv = client.get_hrv_data(d)
-        if hrv:
-            val = (hrv.get("hrvSummary", {}).get("lastNight")
-                or hrv.get("hrvSummary", {}).get("weeklyAvg")
-                or hrv.get("lastNight")
-                or hrv.get("weeklyAvg")
-                or hrv.get("lastNightAvg"))
-            if val:
-                return round(float(val))
-    except Exception as e:
-        print(f"HRV method 1 {d}: {e}")
+def parse_laps(splits_raw):
+    laps = splits_raw.get("lapDTOs", [])
+    result = []
+    for l in laps:
+        dur = round((l.get("duration") or 0) / 60, 1)
+        if dur < 0.5:
+            continue
+        result.append({
+            "index": l.get("lapIndex"),
+            "duration_min": dur,
+            "avg_power": l.get("averagePower"),
+            "norm_power": l.get("normalizedPower"),
+            "max_power": l.get("maxPower"),
+            "avg_hr": l.get("averageHR"),
+            "max_hr": l.get("maxHR"),
+            "cadence": l.get("averageBikeCadence"),
+            "intensity": l.get("intensityType"),
+        })
+    return result
 
-    try:
-        # Methode 2: aus Schlaf-Daten
-        sleep = client.get_sleep_data(d)
-        hrv_s = sleep.get("hrvSummary", {})
-        val = hrv_s.get("lastNight") or hrv_s.get("weeklyAvg")
-        if val:
-            return round(float(val))
-        # Methode 3: aus dailySleepDTO
-        dto = sleep.get("dailySleepDTO", {})
-        val = dto.get("avgSleepStress")
-        if val:
-            # Stress invertiert zu HRV (Näherung)
-            return max(10, round(100 - float(val)))
-    except Exception as e:
-        print(f"HRV method 2 {d}: {e}")
-
-    try:
-        # Methode 4: get_rhr_day (Ruheherzrate als Proxy)
-        rhr = client.get_rhr_day(d, d)
-        if rhr and isinstance(rhr, list) and len(rhr) > 0:
-            val = rhr[0].get("value") or rhr[0].get("restingHeartRate")
-            # RHR ist kein HRV aber besser als nichts
-            # Gib None zurück – lieber leer als falsch
-    except Exception as e:
-        print(f"HRV method 3 {d}: {e}")
-
-    return None
-
-def fetch_sleep(client, days=7):
-    results = []
-    today = date.today()
-    for i in range(days - 1, -1, -1):
-        d = (today - timedelta(days=i)).isoformat()
-        try:
-            raw = client.get_sleep_data(d)
-            dto = raw.get("dailySleepDTO", {})
-            scores = dto.get("sleepScores", {})
-
-            score = None
-            if isinstance(scores.get("overall"), dict):
-                score = scores["overall"].get("value")
-            elif scores.get("totalScore"):
-                score = scores["totalScore"]
-            elif isinstance(scores.get("totalScore"), (int, float)):
-                score = scores["totalScore"]
-
-            # HRV: Priorität lastNight > lastNightAvg > weeklyAvg
-            hrv_summary = raw.get("hrvSummary", {})
-            hrv = (hrv_summary.get("lastNight")
-                or hrv_summary.get("lastNightAvg")
-                or hrv_summary.get("lastNight5MinHigh")
-                or hrv_summary.get("weeklyAvg"))
-
-            # Debug: alle HRV-Felder loggen
-            print(f"HRV fields {d}: {json.dumps({k:v for k,v in hrv_summary.items() if v is not None})}")
-
-            if not hrv:
-                hrv = fetch_hrv(client, d)
-
-            if hrv:
-                hrv = round(float(hrv))
-
-            print(f"Sleep {d}: dur={to_hours(dto.get('sleepTimeSeconds'))}h score={score} hrv={hrv}")
-
-            entry = {
-                "date": d,
-                "duration": to_hours(dto.get("sleepTimeSeconds")),
-                "deepSleep": to_hours(dto.get("deepSleepSeconds")),
-                "remSleep": to_hours(dto.get("remSleepSeconds")),
-                "lightSleep": to_hours(dto.get("lightSleepSeconds")),
-                "score": score,
-                "hrv": hrv,
-                "restingHr": dto.get("restingHeartRate"),
-            }
-            if entry["duration"] > 0:
-                results.append(entry)
-        except Exception as e:
-            print(f"Sleep {d}: {e}")
-    return results
-
-def fetch_training(client, days=7):
-    TYPE_MAP = {
-        "running": ("Laufen", "🏃"), "cycling": ("Radfahren", "🚴"),
-        "swimming": ("Schwimmen", "🏊"), "lap_swimming": ("Schwimmen", "🏊"),
-        "strength_training": ("Kraft", "💪"), "yoga": ("Yoga", "🧘"),
-        "walking": ("Gehen", "🚶"), "hiking": ("Wandern", "⛰️"),
-        "indoor_cycling": ("Indoor Bike", "🚴"), "elliptical": ("Ellipse", "🏃"),
-        "cardio": ("Cardio", "❤️"), "soccer": ("Fussball", "⚽"),
-        "tennis": ("Tennis", "🎾"), "fitness_equipment": ("Fitness", "🏋️"),
-    }
+def sync_activities(client, days=30):
+    """Holt Aktivitäten und speichert sie in DB."""
     today = date.today()
     start = (today - timedelta(days=days)).isoformat()
-    end = today.isoformat()
-    try:
-        activities = client.get_activities_by_date(start, end) or []
-    except Exception as e:
-        print(f"Activities: {e}")
-        activities = []
+    activities = client.get_activities_by_date(start, today.isoformat()) or []
 
-    results = []
-    existing = set()
-    for a in activities:
-        key = (a.get("activityType", {}).get("typeKey") or "").lower()
-        name, emoji = TYPE_MAP.get(key, ("Training", "⚡"))
-        d = (a.get("startTimeLocal") or "")[:10]
-        existing.add(d)
-        results.append({
-            "date": d, "type": name, "emoji": emoji,
-            "duration": round((a.get("duration") or 0) / 60),
-            "load": round(a.get("activityTrainingLoad") or 0),
-            "calories": round(a.get("calories") or 0),
-            "distance": round((a.get("distance") or 0) / 1000, 2),
-            "avgHr": a.get("averageHR"),
-        })
-    for i in range(days):
-        d = (today - timedelta(days=i)).isoformat()
-        if d not in existing:
-            results.append({"date": d, "type": "Ruhetag", "emoji": "😴",
-                            "duration": 0, "load": 0, "calories": 0})
-    results.sort(key=lambda x: x["date"])
-    return results[-days:]
+    saved = 0
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for a in activities:
+                aid = a.get("activityId")
+                if not aid:
+                    continue
+
+                # Prüfen ob bereits vorhanden
+                cur.execute("SELECT id FROM activities WHERE id=%s", (aid,))
+                if cur.fetchone():
+                    continue
+
+                # Lap-Daten holen
+                laps = []
+                try:
+                    splits = client.get_activity_splits(aid)
+                    laps = parse_laps(splits)
+                except Exception as e:
+                    print(f"Laps {aid}: {e}")
+
+                power_zones = {f"Z{i}": a.get(f"powerTimeInZone_{i}") for i in range(1, 8)}
+                hr_zones = {f"Z{i}": a.get(f"hrTimeInZone_{i}") for i in range(1, 6)}
+
+                cur.execute("""
+                    INSERT INTO activities
+                    (id, date, name, type, duration_min, avg_power, norm_power, max_power,
+                     max_20min_power, avg_hr, max_hr, calories, training_load,
+                     aerobic_te, anaerobic_te, power_zones, hr_zones, laps, raw)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (id) DO NOTHING
+                """, (
+                    aid,
+                    a.get("startTimeLocal", "")[:10] or None,
+                    a.get("activityName"),
+                    a.get("activityType", {}).get("typeKey"),
+                    round((a.get("duration") or 0) / 60),
+                    a.get("avgPower"),
+                    a.get("normPower"),
+                    a.get("maxPower"),
+                    a.get("maxAvgPower_20"),
+                    a.get("averageHR"),
+                    a.get("maxHR"),
+                    a.get("calories"),
+                    a.get("activityTrainingLoad"),
+                    a.get("aerobicTrainingEffect"),
+                    a.get("anaerobicTrainingEffect"),
+                    json.dumps(power_zones),
+                    json.dumps(hr_zones),
+                    json.dumps(laps),
+                    json.dumps({k: a.get(k) for k in ["activityName","duration","avgPower","normPower","averageHR"]})
+                ))
+                saved += 1
+        conn.commit()
+    print(f"✅ {saved} neue Aktivitäten gespeichert")
+    return saved
+
+def sync_health(client, days=30):
+    """Holt Schlaf/HRV und speichert in DB."""
+    today = date.today()
+    saved = 0
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for i in range(days):
+                d = (today - timedelta(days=i)).isoformat()
+                cur.execute("SELECT date FROM health_data WHERE date=%s", (d,))
+                if cur.fetchone():
+                    continue
+                try:
+                    raw = client.get_sleep_data(d)
+                    dto = raw.get("dailySleepDTO", {})
+                    hrv_s = raw.get("hrvSummary", {})
+                    scores = dto.get("sleepScores", {})
+                    score = None
+                    if isinstance(scores.get("overall"), dict):
+                        score = scores["overall"].get("value")
+                    hrv = hrv_s.get("lastNight") or hrv_s.get("lastNightAvg") or hrv_s.get("weeklyAvg")
+                    dur = to_hours(dto.get("sleepTimeSeconds"))
+                    if dur > 0:
+                        cur.execute("""
+                            INSERT INTO health_data
+                            (date, sleep_duration, deep_sleep, rem_sleep, sleep_score, hrv, resting_hr)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s)
+                            ON CONFLICT (date) DO UPDATE SET
+                            sleep_duration=EXCLUDED.sleep_duration, hrv=EXCLUDED.hrv,
+                            sleep_score=EXCLUDED.sleep_score
+                        """, (d, dur, to_hours(dto.get("deepSleepSeconds")),
+                              to_hours(dto.get("remSleepSeconds")), score,
+                              round(float(hrv)) if hrv else None,
+                              dto.get("restingHeartRate")))
+                        saved += 1
+                except Exception as e:
+                    print(f"Health {d}: {e}")
+        conn.commit()
+    print(f"✅ {saved} neue Gesundheitsdaten gespeichert")
+    return saved
+
+# ══════════════════════════════════════════════
+# COACH LOGIC
+# ══════════════════════════════════════════════
+
+def build_context(profile, recent_activities, recent_health, chat_history):
+    """Baut den kompletten Coach-Kontext für Claude."""
+    ftp = profile.get("ftp", 210)
+    weight = profile.get("weight", 63)
+    wpkg = round(ftp / weight, 2)
+    goal_wpkg = profile.get("goal_wpkg", 4.0)
+    goal_ftp = round(goal_wpkg * weight)
+
+    def classify_lap(lap, ftp):
+        p = lap.get("avg_power") or 0
+        pct = round(p / ftp * 100) if ftp else 0
+        if pct < 56: zone = "Z1 (Erholung)"
+        elif pct < 76: zone = "Z2 (Grundlage)"
+        elif pct < 91: zone = "Z3 (Tempo/SST)"
+        elif pct < 106: zone = "Z4 (Schwelle)"
+        elif pct < 121: zone = "Z5 (VO2max)"
+        elif pct < 151: zone = "Z6 (Anaerob)"
+        else: zone = "Z7 (Neuromuskulär)"
+        return f"{pct}% FTP → {zone}"
+
+    acts_text = ""
+    for a in recent_activities[:10]:
+        laps = a.get("laps") or []
+        if isinstance(laps, str):
+            try: laps = json.loads(laps)
+            except: laps = []
+        lap_text = ""
+        for l in laps:
+            if l.get("avg_power"):
+                lap_text += f"\n      Lap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)})"
+        acts_text += f"""
+• {a['date']} – {a['name']}
+  Dauer: {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a['norm_power'] or '?'}W | Ø HR: {a['avg_hr'] or '?'}bpm
+  Aerob TE: {a['aerobic_te'] or '?'} | Anaerob TE: {a['anaerobic_te'] or '?'}{lap_text}"""
+
+    health_text = ""
+    for h in recent_health[:7]:
+        health_text += f"\n• {h['date']}: Schlaf {h['sleep_duration']}h | Score {h['sleep_score'] or '?'} | HRV {h['hrv'] or '?'}ms | Ruhepuls {h['resting_hr'] or '?'}bpm"
+
+    history_text = ""
+    for m in chat_history[-20:]:
+        role = "Du" if m["role"] == "user" else "Coach"
+        history_text += f"\n{role}: {m['content']}"
+
+    return f"""Du bist ein ehrlicher, direkter Radsport-Coach. Kein Blabla, kein leeres Lob — du sagst was wirklich ist und was der Athlet tun muss um besser zu werden.
+
+ATHLETEN-PROFIL:
+- FTP: {ftp}W | Gewicht: {weight}kg | Aktuell: {wpkg} W/kg
+- Ziel: {goal_wpkg} W/kg = {goal_ftp}W FTP (noch +{goal_ftp - ftp}W)
+- Trainingstage/Woche: {profile.get('days', 4)}
+- Fitness-Level: {profile.get('level', 'Mittel')}
+
+TRAININGS-ZONEN (basierend auf FTP {ftp}W):
+Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.90)}W
+Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 {round(ftp*1.06)}-{round(ftp*1.20)}W | Z6+ >{round(ftp*1.21)}W
+
+LETZTE AKTIVITÄTEN:
+{acts_text}
+
+GESUNDHEITSDATEN (letzte 7 Tage):
+{health_text}
+
+BISHERIGER CHAT:
+{history_text}
+
+Antworte präzise, datenbasiert und auf Deutsch. Wenn du Trainingseinheiten empfiehlst, nenne immer konkrete Wattbereiche basierend auf der FTP des Athleten."""
 
 # ══════════════════════════════════════════════
 # ROUTES
 # ══════════════════════════════════════════════
 
-@app.route("/")
-def index():
-    return jsonify({"status": "Garmin Training Advisor API v2"})
-
-@app.route("/debug-activity", methods=["POST"])
-def debug_activity():
-    body = request.get_json() or {}
-    email = body.get("email", "").strip()
-    password = body.get("password", "")
-    try:
-        client = get_client(email, password)
-        today = date.today()
-        start = (today - timedelta(days=14)).isoformat()
-        activities = client.get_activities_by_date(start, today.isoformat()) or []
-
-        cycling = [a for a in activities if any(k in (a.get("activityType", {}).get("typeKey") or "").lower()
-                   for k in ["cycl", "virtual", "zwift"])]
-        if not cycling:
-            return jsonify({"ok": False, "error": "Keine Radeinheit gefunden"})
-
-        last = cycling[0]
-        activity_id = last.get("activityId")
-
-        result = {
-            "activity_name": last.get("activityName"),
-            "date": last.get("startTimeLocal", "")[:10],
-            "duration_min": round((last.get("duration") or 0) / 60),
-            "avg_power": last.get("avgPower"),
-            "norm_power": last.get("normPower"),
-            "max_power": last.get("maxPower"),
-            "max_20min_power": last.get("maxAvgPower_20"),
-            "avg_hr": last.get("averageHR"),
-            "power_zones": {f"Z{i}": last.get(f"powerTimeInZone_{i}") for i in range(1, 8)},
-            "hr_zones": {f"Z{i}": last.get(f"hrTimeInZone_{i}") for i in range(1, 6)},
-            "aerobic_te": last.get("aerobicTrainingEffect"),
-            "anaerobic_te": last.get("anaerobicTrainingEffect"),
-            "splits": [],
-            "intervals": [],
-        }
-
-        # Splits holen
-        try:
-            splits = client.get_activity_splits(activity_id)
-            result["splits_raw"] = splits
-            # Versuche relevante Lap-Daten zu extrahieren
-            laps = splits.get("lapDTOs") or splits.get("laps") or splits if isinstance(splits, list) else []
-            result["splits"] = [{
-                "lap": i+1,
-                "duration_min": round((l.get("duration") or l.get("elapsedDuration") or 0) / 60, 1),
-                "avg_power": l.get("averagePower") or l.get("avgPower"),
-                "avg_hr": l.get("averageHR"),
-                "distance_km": round((l.get("distance") or 0) / 1000, 2),
-            } for i, l in enumerate(laps[:20])]
-        except Exception as e:
-            result["splits_error"] = str(e)
-
-        # Intensity Intervals
-        try:
-            intervals = client.get_activity_intensity_intervals(activity_id)
-            result["intervals_raw_keys"] = list(intervals.keys()) if isinstance(intervals, dict) else str(type(intervals))
-            iv_list = intervals.get("intervalDTOs") or intervals.get("intervals") or []
-            result["intervals"] = [{
-                "type": iv.get("intensityType") or iv.get("type"),
-                "duration_min": round((iv.get("duration") or 0) / 60, 1),
-                "avg_power": iv.get("averagePower") or iv.get("avgPower"),
-                "avg_hr": iv.get("averageHR"),
-            } for iv in iv_list[:20]]
-        except Exception as e:
-            result["intervals_error"] = str(e)
-
-        return jsonify({"ok": True, **result})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
 @app.route("/health")
 def health():
     return jsonify({"ok": True})
 
-@app.route("/debug-page")
-def debug_page():
-    html = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Debug</title>
-<style>body{background:#000;color:#fff;font-family:monospace;padding:24px}
-input{width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:10px;font-size:14px}
-button{padding:12px 24px;background:#0a84ff;border:none;border-radius:8px;color:#fff;font-size:15px;cursor:pointer}
-pre{background:#111;padding:16px;border-radius:8px;margin-top:16px;overflow-x:auto;font-size:12px;line-height:1.5;white-space:pre-wrap}
-</style></head><body>
-<h2>Garmin Activity Debug</h2>
-<input id="email" type="email" placeholder="Garmin E-Mail">
-<input id="pw" type="password" placeholder="Garmin Passwort">
-<button onclick="run()">Letzte Radeinheit analysieren</button>
-<pre id="out">Ergebnis erscheint hier...</pre>
-<script>
-async function run(){
-  document.getElementById('out').textContent='Lade... (kann 20-30s dauern)';
-  try{
-    const res=await fetch('/debug-activity',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('pw').value})});
-    const d=await res.json();
-    document.getElementById('out').textContent=JSON.stringify(d,null,2);
-  }catch(e){document.getElementById('out').textContent='Fehler: '+e.message;}
-}
-</script></body></html>"""
-    return Response(html, mimetype='text/html')
+@app.route("/init", methods=["POST"])
+def init():
+    try:
+        init_db()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
-@app.route("/data", methods=["POST"])
-def data():
+@app.route("/sync", methods=["POST"])
+def sync():
     body = request.get_json() or {}
     email = body.get("email", "").strip()
     password = body.get("password", "")
+    days = body.get("days", 30)
     if not email or not password:
-        return jsonify({"ok": False, "error": "E-Mail und Passwort fehlen"}), 400
+        return jsonify({"ok": False, "error": "Zugangsdaten fehlen"}), 400
     try:
         client = get_client(email, password)
-        sleep = fetch_sleep(client)
-        training = fetch_training(client)
-        try:
-            with open(token_path(email), "w") as f:
-                f.write(client.garth.dumps())
-        except Exception:
-            pass
-        return jsonify({"ok": True, "sleep": sleep, "training": training})
+        acts = sync_activities(client, days)
+        health_saved = sync_health(client, days)
+        # Token speichern
+        with open(token_path(email), "w") as f:
+            f.write(client.garth.dumps())
+        return jsonify({"ok": True, "activities_saved": acts, "health_saved": health_saved})
     except Exception as e:
-        err = str(e)
         _client_cache.pop(email, None)
-        if "429" in err or "Too Many" in err:
-            return jsonify({"ok": False, "error": "Garmin 429 – bitte 30 Min warten"}), 429
-        if "MFA" in err or "2FA" in err or "factor" in err.lower():
-            return jsonify({"ok": False, "error": "2-Faktor-Auth aktiv – bitte in Garmin deaktivieren"}), 401
-        return jsonify({"ok": False, "error": err}), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
 
-@app.route("/analyze", methods=["POST"])
-def analyze():
+@app.route("/dashboard", methods=["POST"])
+def dashboard():
+    """Gibt alle Dashboard-Daten zurück."""
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM activities
+                    ORDER BY date DESC LIMIT 20
+                """)
+                activities = [dict(r) for r in cur.fetchall()]
+
+                cur.execute("""
+                    SELECT * FROM health_data
+                    ORDER BY date DESC LIMIT 7
+                """)
+                health = [dict(r) for r in cur.fetchall()]
+
+                # Parse JSON fields
+                for a in activities:
+                    for f in ["laps", "power_zones", "hr_zones", "raw"]:
+                        if isinstance(a.get(f), str):
+                            try: a[f] = json.loads(a[f])
+                            except: pass
+                    # Serialize dates
+                    if a.get("date"):
+                        a["date"] = str(a["date"])
+                    if a.get("created_at"):
+                        a["created_at"] = str(a["created_at"])
+
+                for h in health:
+                    if h.get("date"):
+                        h["date"] = str(h["date"])
+                    if h.get("created_at"):
+                        h["created_at"] = str(h["created_at"])
+
+        return jsonify({"ok": True, "activities": activities, "health": health})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/profile", methods=["GET", "POST"])
+def profile():
+    if request.method == "POST":
+        data = request.get_json() or {}
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO profile (id, data) VALUES (1, %s)
+                        ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()
+                    """, (json.dumps(data),))
+                conn.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+    else:
+        try:
+            with get_db() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT data FROM profile WHERE id=1")
+                    row = cur.fetchone()
+            return jsonify({"ok": True, "profile": row["data"] if row else {}})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/chat", methods=["POST"])
+def chat():
     body = request.get_json() or {}
-    sleep = body.get("sleep", [])
-    training = body.get("training", [])
-    profile = body.get("profile", {})
+    message = body.get("message", "").strip()
+    if not message:
+        return jsonify({"ok": False, "error": "Nachricht fehlt"}), 400
 
-    if not sleep:
-        return jsonify({"ok": False, "error": "Keine Schlafdaten"}), 400
-
-    today = sleep[-1] if sleep else {}
-    hrv_vals = [s["hrv"] for s in sleep if s.get("hrv")]
-    avg_hrv = round(sum(hrv_vals) / len(hrv_vals)) if hrv_vals else 0
-    total_load = sum(t.get("load", 0) for t in training)
-
-    profile_text = ""
-    if profile:
-        profile_text = f"""
-ATHLETEN-PROFIL:
-- Ziel: {profile.get('goal', 'nicht angegeben')}
-- Fitness-Level: {profile.get('level', 'nicht angegeben')}
-- Alter: {profile.get('age', '?')} Jahre
-- Gewicht: {profile.get('weight', '?')} kg
-- Geschlecht: {profile.get('gender', '?')}
-- Geplante Trainingstage/Woche: {profile.get('days', '?')}
-"""
-
-    prompt = f"""Du bist ein erfahrener Personal Trainer und Schlafmediziner. Erstelle eine hochpersonalisierte Trainingsanalyse auf Deutsch.
-{profile_text}
-SCHLAFDATEN (letzte 7 Tage):
-{chr(10).join(f"• {s['date']}: {s['duration']}h | Tief {s['deepSleep']}h | REM {s['remSleep']}h | Score {s.get('score') or '?'} | HRV {s.get('hrv') or '?'}ms" for s in sleep)}
-
-TRAININGSDATEN (letzte 7 Tage):
-{chr(10).join(f"• {t['date']}: {t['type']} {t['duration']}min | Load {t['load']} | {t['calories']}kcal" for t in training)}
-
-KENNZAHLEN:
-- HRV heute: {today.get('hrv') or '?'}ms | Ø 7 Tage: {avg_hrv}ms
-- Wochenbelastung: {total_load} ATL
-
-Berücksichtige das Athleten-Profil bei ALLEN Empfehlungen.
-
-🔋 ERHOLUNGSSTATUS
-Bewerte die aktuelle Erholung konkret mit Datenbezug.
-
-🏋️ EMPFEHLUNG FÜR HEUTE
-Konkretes Training: Typ, Dauer, Intensität passend zum Ziel und Fitness-Level. Warum genau das?
-
-📅 WOCHENPLAN
-{profile.get('days', 4)}-Tage-Plan passend zum Ziel "{profile.get('goal', 'Gesund bleiben')}".
-
-😴 SCHLAF-OPTIMIERUNG
-2–3 datenbasierte Tipps.
-
-⚡ WICHTIGSTE ERKENNTNIS
-Die eine Sache die dieser Athlet jetzt wissen muss."""
-
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
-        return jsonify({"ok": False, "error": "GEMINI_API_KEY nicht gesetzt. Bitte in Railway Variables eintragen."}), 500
+        return jsonify({"ok": False, "error": "ANTHROPIC_API_KEY fehlt"}), 500
 
     try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Profil
+                cur.execute("SELECT data FROM profile WHERE id=1")
+                row = cur.fetchone()
+                profile_data = row["data"] if row else {}
+
+                # Letzte Aktivitäten
+                cur.execute("""
+                    SELECT id, date::text, name, duration_min, avg_power, norm_power,
+                           avg_hr, aerobic_te, anaerobic_te, laps, power_zones, hr_zones,
+                           training_load
+                    FROM activities ORDER BY date DESC LIMIT 15
+                """)
+                activities = [dict(r) for r in cur.fetchall()]
+                for a in activities:
+                    for f in ["laps", "power_zones", "hr_zones"]:
+                        if isinstance(a.get(f), str):
+                            try: a[f] = json.loads(a[f])
+                            except: pass
+
+                # Gesundheitsdaten
+                cur.execute("""
+                    SELECT date::text, sleep_duration, sleep_score, hrv, resting_hr
+                    FROM health_data ORDER BY date DESC LIMIT 14
+                """)
+                health = [dict(r) for r in cur.fetchall()]
+
+                # Chat-Verlauf
+                cur.execute("""
+                    SELECT role, content FROM chat_messages
+                    ORDER BY created_at DESC LIMIT 30
+                """)
+                history = list(reversed([dict(r) for r in cur.fetchall()]))
+
+        # Nachricht speichern
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO chat_messages (role, content) VALUES (%s, %s)",
+                    ("user", message)
+                )
+            conn.commit()
+
+        # Context aufbauen
+        context = build_context(profile_data, activities, health, history)
+
+        # Claude aufrufen
+        messages = [{"role": "user", "content": context + f"\n\nAthlet: {message}"}]
+
         res = req.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": 1200, "temperature": 0.7}
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
             },
-            timeout=30
+            json={
+                "model": "claude-opus-4-5",
+                "max_tokens": 1500,
+                "messages": messages
+            },
+            timeout=45
         )
         data = res.json()
-        if "error" in data:
-            return jsonify({"ok": False, "error": f"Gemini Fehler: {data['error'].get('message', str(data))}"}), 500
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return jsonify({"ok": True, "text": text})
+        reply = "".join(b.get("text", "") for b in data.get("content", []))
+        if not reply:
+            return jsonify({"ok": False, "error": f"Claude Fehler: {data}"}), 500
+
+        # Antwort speichern
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO chat_messages (role, content) VALUES (%s, %s)",
+                    ("assistant", reply)
+                )
+            conn.commit()
+
+        return jsonify({"ok": True, "reply": reply})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/history", methods=["GET"])
+def history():
+    """Gibt den kompletten Chat-Verlauf zurück."""
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT role, content, created_at::text
+                    FROM chat_messages ORDER BY created_at ASC
+                """)
+                messages = [dict(r) for r in cur.fetchall()]
+        return jsonify({"ok": True, "messages": messages})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 if __name__ == "__main__":
+    try:
+        init_db()
+    except Exception as e:
+        print(f"DB init: {e}")
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)

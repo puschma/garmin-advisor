@@ -5,681 +5,919 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Garmin Advisor">
+<meta name="apple-mobile-web-app-title" content="Cycling Coach">
 <meta name="theme-color" content="#000000">
-<title>Garmin Training Advisor</title>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>Cycling Coach</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:       #000000;
-  --bg2:      #0a0a0a;
-  --card:     #111111;
-  --card2:    #1a1a1a;
-  --border:   rgba(255,255,255,0.09);
-  --border2:  rgba(255,255,255,0.05);
-  --text:     #ffffff;
-  --text2:    rgba(255,255,255,0.55);
-  --text3:    rgba(255,255,255,0.28);
-  --blue:     #0a84ff;
-  --green:    #30d158;
-  --orange:   #ff9f0a;
-  --red:      #ff453a;
-  --cyan:     #5ac8fa;
-  --purple:   #bf5af2;
-  --pink:     #ff375f;
-  --mono:     'JetBrains Mono', monospace;
+  --bg: #000;
+  --bg2: #0a0a0a;
+  --card: #111;
+  --card2: #1a1a1a;
+  --border: rgba(255,255,255,0.09);
+  --text: #fff;
+  --text2: rgba(255,255,255,0.55);
+  --text3: rgba(255,255,255,0.28);
+  --blue: #0a84ff;
+  --green: #30d158;
+  --orange: #ff9f0a;
+  --red: #ff453a;
+  --cyan: #5ac8fa;
+  --mono: 'JetBrains Mono', monospace;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
 }
-
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-html, body { height: 100%; overscroll-behavior: none; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Figtree', sans-serif;
-  overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
-}
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--text); font-family: 'Figtree', sans-serif; -webkit-font-smoothing: antialiased; }
 
 /* ── SCREENS ── */
-.screen { position: fixed; inset: 0; z-index: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.screen { position: fixed; inset: 0; z-index: 1; display: flex; flex-direction: column; }
 .screen.hidden { display: none; }
 
-/* ══════════════════════════════════════
-   LOGIN
-══════════════════════════════════════ */
+/* ══════════════════ LOGIN ══════════════════ */
 #loginScreen {
-  display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: calc(var(--safe-top) + 48px) 24px calc(var(--safe-bot) + 40px);
-  min-height: 100%;
-  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(10,132,255,0.18), transparent);
+  padding: calc(var(--safe-top) + 40px) 24px calc(var(--safe-bot) + 32px);
+  overflow-y: auto;
+  background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(10,132,255,0.15), transparent);
 }
-
-.brand { text-align: center; margin-bottom: 44px; }
-.brand-ring {
-  width: 88px; height: 88px; border-radius: 26px;
-  background: linear-gradient(145deg, #0055cc, #0a84ff);
+.brand { text-align: center; margin-bottom: 40px; }
+.brand-icon {
+  width: 84px; height: 84px; border-radius: 26px;
+  background: linear-gradient(145deg, #003fa3, #0a84ff);
   display: flex; align-items: center; justify-content: center;
-  font-size: 40px; margin: 0 auto 22px;
-  box-shadow: 0 0 0 1px rgba(10,132,255,0.4), 0 24px 64px rgba(10,132,255,0.35);
+  font-size: 40px; margin: 0 auto 20px;
+  box-shadow: 0 0 0 1px rgba(10,132,255,0.4), 0 20px 60px rgba(10,132,255,0.3);
   animation: float 4s ease-in-out infinite;
 }
-@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-.brand h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 6px; }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+.brand h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 6px; }
 .brand p { font-size: 14px; color: var(--text2); line-height: 1.5; }
+.login-box { width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--border); border-radius: 26px; padding: 28px 22px; box-shadow: 0 32px 80px rgba(0,0,0,0.5); }
+.flabel { font-size: 12px; font-weight: 600; color: var(--text2); display: block; margin-bottom: 7px; }
+.finput { width: 100%; padding: 14px 16px; margin-bottom: 12px; background: var(--card2); border: 1px solid var(--border); border-radius: 14px; color: var(--text); font-size: 16px; font-family: var(--mono); outline: none; transition: border-color 0.2s; -webkit-appearance: none; }
+.finput:focus { border-color: var(--blue); }
+.btn-blue { width: 100%; padding: 16px; background: var(--blue); border: none; border-radius: 16px; color: #fff; font-size: 16px; font-weight: 700; font-family: 'Figtree', sans-serif; cursor: pointer; transition: opacity 0.15s; }
+.btn-blue:active { opacity: 0.85; }
+.btn-blue:disabled { opacity: 0.4; }
+.divider { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+.divider-line { flex: 1; height: 1px; background: var(--border); }
+.divider-text { font-size: 11px; color: var(--text3); }
+.btn-ghost { width: 100%; padding: 14px; background: var(--card2); border: 1px solid var(--border); border-radius: 14px; color: var(--text2); font-size: 14px; font-weight: 600; font-family: 'Figtree', sans-serif; cursor: pointer; }
+.login-err { margin-top: 12px; padding: 12px; background: rgba(255,69,58,0.1); border: 1px solid rgba(255,69,58,0.2); border-radius: 12px; font-size: 13px; color: #ff6b60; display: none; line-height: 1.5; }
 
-.login-box {
-  width: 100%; max-width: 360px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 26px;
-  padding: 28px 22px 24px;
-  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+/* ══════════════════ PROFILE ══════════════════ */
+#profileScreen { overflow-y: auto; padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bot) + 32px); background: var(--bg); }
+.phead { margin-bottom: 28px; }
+.phead h2 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+.phead p { font-size: 14px; color: var(--text2); margin-top: 6px; line-height: 1.5; }
+.psection { margin-bottom: 22px; }
+.psection-label { font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 10px; display: block; }
+.choice-grid { display: grid; gap: 8px; }
+.choice-grid.cols2 { grid-template-columns: 1fr 1fr; }
+.choice-grid.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+.choice-btn { padding: 12px 8px; background: var(--card2); border: 1.5px solid var(--border); border-radius: 14px; color: var(--text2); font-size: 13px; font-weight: 600; font-family: 'Figtree', sans-serif; cursor: pointer; text-align: center; line-height: 1.4; transition: all 0.15s; }
+.choice-btn.active { background: rgba(10,132,255,0.15); border-color: var(--blue); color: var(--text); }
+.input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.input-group label { font-size: 12px; font-weight: 600; color: var(--text2); display: block; margin-bottom: 7px; }
+.input-group input { width: 100%; padding: 13px 14px; background: var(--card2); border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-size: 15px; font-family: var(--mono); outline: none; -webkit-appearance: none; }
+.input-group input:focus { border-color: var(--blue); }
+.range-wrap { padding: 4px 0; }
+.range-wrap input[type=range] { width: 100%; accent-color: var(--blue); height: 4px; }
+.range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-top: 6px; font-family: var(--mono); }
+
+/* ══════════════════ MAIN APP ══════════════════ */
+#appScreen { background: var(--bg); }
+
+/* Tab bar */
+.tabbar {
+  display: flex; background: var(--bg); border-top: 1px solid var(--border);
+  padding: 8px 0 calc(var(--safe-bot) + 8px); flex-shrink: 0; z-index: 10;
 }
-.flabel { font-size: 12px; font-weight: 600; color: var(--text2); display: block; margin-bottom: 8px; letter-spacing: 0.2px; }
-.finput {
-  width: 100%; padding: 14px 16px; margin-bottom: 12px;
+.tab-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: none; border: none; cursor: pointer; padding: 6px 4px;
+  color: var(--text3); font-size: 10px; font-weight: 600; font-family: 'Figtree', sans-serif;
+  transition: color 0.15s;
+}
+.tab-btn.active { color: var(--blue); }
+.tab-btn .tab-icon { font-size: 22px; line-height: 1; }
+
+/* Tab content */
+.tab-content { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+.tab-content.active { display: flex; }
+
+/* ── CHAT TAB ── */
+#chatTab { position: relative; }
+.chat-header {
+  padding: calc(var(--safe-top) + 12px) 18px 12px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.chat-header h2 { font-size: 18px; font-weight: 800; }
+.chat-header p { font-size: 12px; color: var(--text2); margin-top: 2px; font-family: var(--mono); }
+.sync-btn {
+  display: flex; align-items: center; gap: 6px; padding: 8px 14px;
   background: var(--card2); border: 1px solid var(--border);
-  border-radius: 14px; color: var(--text); font-size: 16px;
-  font-family: var(--mono); outline: none; transition: border-color 0.2s, box-shadow 0.2s;
-  -webkit-appearance: none;
+  border-radius: 20px; color: var(--text2); font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: 'Figtree', sans-serif; transition: all 0.15s;
 }
-.finput:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(10,132,255,0.15); }
+.sync-btn:active { opacity: 0.7; }
+.sync-btn.loading { color: var(--orange); border-color: rgba(255,159,10,0.3); }
 
-.btn-blue {
-  width: 100%; padding: 16px;
-  background: var(--blue);
-  border: none; border-radius: 16px; color: #fff;
-  font-size: 16px; font-weight: 700; font-family: 'Figtree', sans-serif;
-  cursor: pointer; transition: opacity 0.15s, transform 0.15s;
-  letter-spacing: -0.1px;
+.messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+
+.msg { display: flex; gap: 10px; animation: msgIn 0.3s ease; max-width: 100%; }
+@keyframes msgIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+.msg.user { flex-direction: row-reverse; }
+
+.msg-avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
 }
-.btn-blue:active { opacity: 0.85; transform: scale(0.98); }
-.btn-blue:disabled { opacity: 0.4; transform: none; }
+.msg.coach .msg-avatar { background: var(--blue); }
+.msg.user .msg-avatar { background: var(--card2); border: 1px solid var(--border); }
 
-.btn-ghost {
-  width: 100%; padding: 14px; margin-top: 10px;
-  background: var(--card2); border: 1px solid var(--border);
-  border-radius: 14px; color: var(--text2);
-  font-size: 15px; font-weight: 600; font-family: 'Figtree', sans-serif;
-  cursor: pointer; transition: opacity 0.15s;
+.msg-bubble {
+  max-width: calc(100% - 50px); padding: 12px 14px;
+  border-radius: 18px; font-size: 14px; line-height: 1.65;
 }
-.btn-ghost:active { opacity: 0.7; }
-
-.divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
-.divider-line { flex: 1; height: 1px; background: var(--border2); }
-.divider-text { font-size: 12px; color: var(--text3); font-family: var(--mono); }
-
-.login-notice {
-  margin-top: 16px; padding: 12px 14px;
-  background: rgba(10,132,255,0.08); border: 1px solid rgba(10,132,255,0.18);
-  border-radius: 12px; font-size: 12px; color: rgba(90,200,250,0.8); line-height: 1.6; text-align: center;
+.msg.coach .msg-bubble {
+  background: var(--card); border: 1px solid var(--border);
+  border-bottom-left-radius: 4px; color: var(--text);
+  white-space: pre-wrap;
 }
-.login-err {
-  margin-top: 12px; padding: 12px 14px;
-  background: rgba(255,69,58,0.1); border: 1px solid rgba(255,69,58,0.2);
-  border-radius: 12px; font-size: 13px; color: #ff6b60; line-height: 1.5; display: none;
+.msg.user .msg-bubble {
+  background: var(--blue); color: #fff;
+  border-bottom-right-radius: 4px;
 }
+.msg-time { font-size: 10px; color: var(--text3); margin-top: 4px; font-family: var(--mono); text-align: right; }
 
-/* ══════════════════════════════════════
-   DASHBOARD
-══════════════════════════════════════ */
-#dashScreen {
-  padding: calc(var(--safe-top) + 16px) 0 calc(var(--safe-bot) + 24px);
+.typing-indicator { display: flex; gap: 4px; padding: 14px; }
+.typing-dot { width: 7px; height: 7px; background: var(--text3); border-radius: 50%; animation: typing 1.2s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing { 0%,100%{transform:translateY(0);opacity:0.3} 50%{transform:translateY(-4px);opacity:1} }
+
+.chat-input-wrap {
+  padding: 12px 16px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; align-items: flex-end; flex-shrink: 0;
   background: var(--bg);
 }
-
-/* Topbar */
-.topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 20px 20px;
+.chat-input {
+  flex: 1; padding: 12px 16px; background: var(--card2);
+  border: 1px solid var(--border); border-radius: 20px;
+  color: var(--text); font-size: 15px; font-family: 'Figtree', sans-serif;
+  outline: none; resize: none; max-height: 120px; line-height: 1.4;
+  -webkit-appearance: none;
 }
-.topbar-left h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-.topbar-left p { font-size: 13px; color: var(--text2); margin-top: 2px; font-family: var(--mono); }
-.logout-btn {
-  width: 36px; height: 36px; border-radius: 50%;
+.chat-input:focus { border-color: var(--blue); }
+.send-btn {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--blue);
+  border: none; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; font-size: 18px; transition: opacity 0.15s;
+}
+.send-btn:active { opacity: 0.8; }
+.send-btn:disabled { opacity: 0.3; }
+
+/* Quick prompts */
+.quick-prompts { display: flex; gap: 8px; padding: 10px 16px 0; overflow-x: auto; flex-shrink: 0; }
+.quick-prompts::-webkit-scrollbar { display: none; }
+.qp-btn {
+  white-space: nowrap; padding: 7px 14px;
   background: var(--card2); border: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; cursor: pointer; color: var(--text2);
+  border-radius: 20px; color: var(--text2); font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: 'Figtree', sans-serif; flex-shrink: 0;
+}
+.qp-btn:active { background: rgba(10,132,255,0.15); color: var(--blue); }
+
+/* ── DASHBOARD TAB ── */
+#dashTab { overflow-y: auto; padding: calc(var(--safe-top) + 16px) 0 0; -webkit-overflow-scrolling: touch; }
+
+.dash-header { padding: 4px 18px 16px; display: flex; align-items: center; justify-content: space-between; }
+.dash-header h2 { font-size: 20px; font-weight: 800; }
+
+/* Stats row */
+.stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 16px; margin-bottom: 12px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px 12px; text-align: center; }
+.stat-val { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.stat-unit { font-size: 10px; color: var(--text2); font-family: var(--mono); }
+.stat-label { font-size: 10px; color: var(--text3); margin-top: 3px; font-family: var(--mono); }
+
+/* Activity list */
+.section-title { font-size: 11px; font-weight: 700; color: var(--text2); letter-spacing: 1.5px; text-transform: uppercase; padding: 0 18px; margin-bottom: 10px; font-family: var(--mono); }
+.act-card { margin: 0 16px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 16px; cursor: pointer; transition: opacity 0.15s; }
+.act-card:active { opacity: 0.75; }
+.act-card-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.act-emoji-big { font-size: 28px; }
+.act-title { font-size: 14px; font-weight: 700; line-height: 1.3; }
+.act-date { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
+.act-metrics { display: flex; gap: 16px; flex-wrap: wrap; }
+.act-metric { font-size: 12px; font-family: var(--mono); color: var(--text2); }
+.act-metric span { color: var(--text); font-weight: 600; }
+
+/* Health cards */
+.health-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px; margin-bottom: 20px; }
+.health-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
+.health-label { font-size: 10px; color: var(--text2); font-family: var(--mono); margin-bottom: 6px; }
+.health-val { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+.health-unit { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+.health-sub { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 4px; }
+
+/* ── ACTIVITY DETAIL ── */
+#detailScreen {
+  position: fixed; inset: 0; z-index: 20;
+  background: var(--bg); display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform 0.3s ease;
+}
+#detailScreen.open { transform: translateX(0); }
+.detail-header { padding: calc(var(--safe-top) + 12px) 18px 12px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.back-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--card2); border: 1px solid var(--border); color: var(--text2); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.detail-body { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+
+.detail-section { background: var(--card); border: 1px solid var(--border); border-radius: 18px; margin-bottom: 12px; overflow: hidden; }
+.detail-section-title { font-size: 10px; font-weight: 700; color: var(--text2); letter-spacing: 1.5px; text-transform: uppercase; padding: 14px 16px 0; font-family: var(--mono); }
+.detail-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.detail-row:last-child { border-bottom: none; }
+.detail-key { font-size: 14px; color: var(--text2); }
+.detail-val { font-size: 14px; font-weight: 700; font-family: var(--mono); }
+
+/* Lap bar */
+.lap-row { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.lap-row:last-child { border-bottom: none; }
+.lap-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.lap-name { font-size: 13px; font-weight: 600; }
+.lap-power { font-size: 14px; font-weight: 700; font-family: var(--mono); }
+.lap-bar-wrap { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; margin-bottom: 5px; }
+.lap-bar { height: 100%; border-radius: 3px; }
+.lap-meta { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+
+/* Ask coach btn */
+.ask-coach-btn {
+  width: 100%; padding: 16px; margin-top: 4px;
+  background: rgba(10,132,255,0.12); border: 1px solid rgba(10,132,255,0.25);
+  border-radius: 16px; color: var(--blue); font-size: 15px; font-weight: 700;
+  font-family: 'Figtree', sans-serif; cursor: pointer;
 }
 
-/* Sync pill */
-.sync-pill {
-  margin: 0 16px 16px;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 100px; padding: 8px 14px;
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--text2); font-family: var(--mono);
-}
-.sdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.sdot.green { background: var(--green); box-shadow: 0 0 8px var(--green); animation: sdot-pulse 2s infinite; }
-.sdot.orange { background: var(--orange); }
-@keyframes sdot-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-.sync-time { margin-left: auto; font-size: 11px; color: var(--text3); }
-.sync-refresh { background: none; border: none; color: var(--blue); font-size: 17px; cursor: pointer; padding: 0 2px; line-height: 1; }
-
-/* Install banner */
-.install-banner {
-  margin: 0 16px 12px; padding: 12px 14px;
-  background: rgba(191,90,242,0.08); border: 1px solid rgba(191,90,242,0.2);
-  border-radius: 14px; font-size: 12px; color: rgba(191,90,242,0.9); line-height: 1.6;
-  display: none; gap: 10px; align-items: flex-start;
-}
-.install-banner button { background: none; border: none; color: var(--text3); font-size: 18px; cursor: pointer; padding: 0; margin-left: auto; flex-shrink: 0; line-height: 1; }
-
-/* ── Hero cards grid ── */
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; margin-bottom: 10px; }
-
-.hcard {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 22px; padding: 18px 16px;
-  position: relative; overflow: hidden;
-}
-
-/* Glow blobs per card */
-.hcard.c-blue::before  { content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(10,132,255,0.25), transparent 70%); pointer-events:none; }
-.hcard.c-green::before { content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(48,209,88,0.25), transparent 70%); pointer-events:none; }
-.hcard.c-cyan::before  { content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(90,200,250,0.2), transparent 70%); pointer-events:none; }
-.hcard.c-orange::before{ content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(255,159,10,0.2), transparent 70%); pointer-events:none; }
-
-.clabel { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 14px; letter-spacing: 0.2px; }
-.ring-wrap { position: relative; width: 70px; height: 70px; }
-.ring-val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ring-num { font-size: 20px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
-.ring-unit { font-size: 9px; color: var(--text2); margin-top: 1px; font-family: var(--mono); }
-.csub { font-size: 12px; color: var(--text2); margin-top: 10px; font-family: var(--mono); }
-.big-num { font-size: 34px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
-.big-unit { font-size: 12px; color: var(--text2); margin-top: 4px; font-family: var(--mono); }
-
-/* ── Wide cards ── */
-.wcard {
-  margin: 0 16px 10px;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 22px; padding: 18px 16px;
-}
-.wcard-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.wcard-title { font-size: 13px; font-weight: 700; color: var(--text); }
-.wcard-meta { font-size: 12px; color: var(--text2); font-family: var(--mono); }
-
-/* Sleep bars */
-.sleep-row { display: flex; gap: 8px; align-items: flex-end; }
-.sleep-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.sleep-stack { width: 26px; height: 80px; background: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
-.sl { width: 100%; transition: height 0.8s ease; }
-
-/* Load bars */
-.load-row { display: flex; gap: 6px; align-items: flex-end; height: 64px; margin-bottom: 14px; }
-.load-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; }
-.load-fill-w { flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.load-fill { width: 100%; border-radius: 5px 5px 0 0; min-height: 3px; }
-
-.bar-day { font-size: 10px; color: var(--text3); font-family: var(--mono); }
-
-/* Activity chips */
-.act-row { display: flex; gap: 6px; }
-.act-chip {
-  flex: 1; padding: 10px 4px; border-radius: 14px;
-  background: var(--card2); border: 1px solid var(--border2);
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-}
-.act-emoji { font-size: 20px; }
-.act-type { font-size: 9px; color: var(--text); font-family: var(--mono); text-align: center; line-height: 1.3; font-weight: 500; }
-.act-day { font-size: 9px; color: var(--text3); font-family: var(--mono); }
-
-/* Sparkline */
-.spark-wrap { height: 48px; }
-svg.spark { width: 100%; height: 100%; overflow: visible; }
-
-/* ── AI Card ── */
-.ai-card {
-  margin: 0 16px 10px;
-  background: linear-gradient(145deg, #0a0a14, #0d0d20);
-  border: 1px solid rgba(10,132,255,0.2);
-  border-radius: 22px; padding: 20px 18px;
-  position: relative; overflow: hidden;
-}
-.ai-card::before {
-  content: ''; position: absolute; bottom: -40px; right: -40px;
-  width: 140px; height: 140px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(10,132,255,0.12), transparent 70%);
-  pointer-events: none;
-}
-.ai-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.ai-icon {
-  width: 38px; height: 38px; border-radius: 12px;
-  background: var(--blue); display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
-  box-shadow: 0 4px 16px rgba(10,132,255,0.4);
-}
-.ai-name { font-size: 15px; font-weight: 700; }
-.ai-desc { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 1px; }
-.ai-refresh {
-  margin-left: auto; padding: 6px 12px;
-  background: rgba(10,132,255,0.15); border: 1px solid rgba(10,132,255,0.3);
-  border-radius: 10px; color: var(--cyan); font-size: 11px; font-weight: 600;
-  cursor: pointer; font-family: var(--mono); display: none;
-}
-
-.analyze-btn {
-  width: 100%; padding: 16px;
-  background: var(--blue);
-  border: none; border-radius: 14px; color: #fff;
-  font-size: 15px; font-weight: 700; font-family: 'Figtree', sans-serif;
-  cursor: pointer; box-shadow: 0 4px 20px rgba(10,132,255,0.4);
-  transition: opacity 0.15s, transform 0.15s;
-}
-.analyze-btn:active { opacity: 0.85; transform: scale(0.98); }
-
-.ai-output {
-  font-size: 14px; line-height: 1.75; color: rgba(255,255,255,0.88);
-  white-space: pre-wrap; animation: fadeUp 0.4s ease;
-}
-@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-
-.spinner {
-  width: 32px; height: 32px; border-radius: 50%;
-  border: 2.5px solid rgba(10,132,255,0.2); border-top-color: var(--blue);
-  animation: spin 0.8s linear infinite; margin: 20px auto;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.spin-label { text-align: center; font-size: 13px; color: var(--text2); font-family: var(--mono); }
-
-.footer { text-align: center; padding: 16px 20px; font-size: 11px; color: var(--text3); font-family: var(--mono); }
+/* Spinner */
+.spinner { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); border-top-color: var(--blue); animation: spin 0.7s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
 </style>
 </head>
 <body>
 
-<!-- ════════════ LOGIN ════════════ -->
+<!-- ════════ LOGIN ════════ -->
 <div class="screen" id="loginScreen">
   <div class="brand">
-    <div class="brand-ring">⌚</div>
-    <h1>Training Advisor</h1>
-    <p>KI-Analyse deiner Garmin-Daten</p>
+    <div class="brand-icon">🚴</div>
+    <h1>Cycling Coach</h1>
+    <p>Dein ehrlicher KI-Trainingscoach</p>
   </div>
-
   <div class="login-box">
     <label class="flabel">Server URL (Railway)</label>
     <input id="serverUrl" class="finput" type="url" placeholder="https://xxx.railway.app" autocapitalize="none" autocorrect="off">
-
     <label class="flabel">Garmin E-Mail</label>
     <input id="emailInput" class="finput" type="email" placeholder="name@beispiel.de" autocomplete="email">
-
     <label class="flabel">Passwort</label>
     <input id="passwordInput" class="finput" type="password" placeholder="••••••••" autocomplete="current-password">
-
-    <button class="btn-blue" id="loginBtn" onclick="handleLogin()">Verbinden & Daten laden</button>
-
+    <button class="btn-blue" id="loginBtn" onclick="handleLogin()">Verbinden</button>
     <div class="divider"><div class="divider-line"></div><span class="divider-text">oder</span><div class="divider-line"></div></div>
-
-    <button class="btn-ghost" onclick="loadDemo()">Demo-Modus starten</button>
-
-    <div class="login-notice">🔒 Daten gehen nur an deinen eigenen Railway-Server</div>
+    <button class="btn-ghost" onclick="loadDemo()">Demo-Modus</button>
     <div class="login-err" id="loginErr"></div>
   </div>
 </div>
 
-<!-- ════════════ DASHBOARD ════════════ -->
-<div class="screen hidden" id="dashScreen">
-
-  <div id="installBanner" class="install-banner">
-    <span>📲 Zum Homescreen: Teilen → „Zum Home-Bildschirm"</span>
-    <button onclick="this.parentElement.style.display='none'">✕</button>
+<!-- ════════ PROFIL ════════ -->
+<div class="screen hidden" id="profileScreen">
+  <div class="phead">
+    <div style="font-size:28px;margin-bottom:10px">🎯</div>
+    <h2>Dein Profil</h2>
+    <p>Der Coach braucht diese Infos um dich wirklich weiterzubringen.</p>
   </div>
 
-  <div class="topbar">
-    <div class="topbar-left">
-      <h1>Training Advisor</h1>
-      <p id="dateLabel"></p>
+  <div class="psection">
+    <span class="psection-label">Hauptziel</span>
+    <div class="choice-grid cols2" id="goalGrid">
+      <button class="choice-btn active" data-val="FTP steigern">⚡ FTP steigern</button>
+      <button class="choice-btn" data-val="Ausdauer aufbauen">🏔️ Ausdauer</button>
+      <button class="choice-btn" data-val="Wettkampf vorbereiten">🏆 Wettkampf</button>
+      <button class="choice-btn" data-val="Gesund & fit bleiben">❤️ Gesund bleiben</button>
     </div>
-    <button class="logout-btn" onclick="doLogout()">↩</button>
   </div>
 
-  <div class="sync-pill" id="syncPill">
-    <div class="sdot green" id="syncDot"></div>
-    <span id="syncLabel">Verbunden</span>
-    <span class="sync-time" id="syncTime"></span>
-    <button class="sync-refresh" onclick="refreshData()">↻</button>
+  <div class="psection">
+    <span class="psection-label">Fitness-Level</span>
+    <div class="choice-grid cols3" id="levelGrid">
+      <button class="choice-btn" data-val="Einsteiger">🌱 Einsteiger</button>
+      <button class="choice-btn active" data-val="Fortgeschritten">⚡ Fortgeschritten</button>
+      <button class="choice-btn" data-val="Wettkampf">🔥 Wettkampf</button>
+    </div>
   </div>
 
-  <!-- Hero Cards -->
-  <div class="grid2">
-    <div class="hcard c-blue">
-      <div class="clabel">Schlaf heute</div>
-      <div class="ring-wrap">
-        <svg width="70" height="70" id="sleepRing"></svg>
-        <div class="ring-val"><span class="ring-num" id="sleepScore">--</span><span class="ring-unit">/ 100</span></div>
+  <div class="psection">
+    <div class="input-row">
+      <div class="input-group">
+        <label>Aktuelle FTP (W)</label>
+        <input id="pFtp" type="number" placeholder="210" value="210">
       </div>
-      <div class="csub" id="sleepDur">-- h</div>
-    </div>
-    <div class="hcard c-green">
-      <div class="clabel">Erholung</div>
-      <div class="ring-wrap">
-        <svg width="70" height="70" id="recovRing"></svg>
-        <div class="ring-val"><span class="ring-num" id="recovLabel" style="font-size:13px;letter-spacing:0">--</span></div>
+      <div class="input-group">
+        <label>Ziel W/kg</label>
+        <input id="pGoalWpkg" type="number" step="0.1" placeholder="4.0" value="4.0">
       </div>
-      <div class="csub" id="hrvToday">HRV -- ms</div>
-    </div>
-    <div class="hcard c-cyan">
-      <div class="clabel">HRV Ø 7 Tage</div>
-      <div class="big-num" id="avgHrv" style="color:var(--cyan)">--</div>
-      <div class="big-unit">ms</div>
-      <div class="csub" id="hrvTrend"></div>
-    </div>
-    <div class="hcard c-orange">
-      <div class="clabel">Wochenload</div>
-      <div class="big-num" id="weekLoad" style="color:var(--orange)">--</div>
-      <div class="big-unit">ATL</div>
-      <div class="csub" id="loadStatus"></div>
-    </div>
-  </div>
-
-  <!-- Sleep Chart -->
-  <div class="wcard">
-    <div class="wcard-hdr">
-      <span class="wcard-title">Schlafverlauf</span>
-      <div style="display:flex;gap:10px;font-size:11px;color:var(--text2);font-family:var(--mono)">
-        <span><span style="color:var(--blue)">▮</span> Tief</span>
-        <span><span style="color:rgba(10,132,255,0.45)">▮</span> REM</span>
+      <div class="input-group">
+        <label>Gewicht (kg)</label>
+        <input id="pWeight" type="number" placeholder="63" value="63">
+      </div>
+      <div class="input-group">
+        <label>Alter</label>
+        <input id="pAge" type="number" placeholder="30">
       </div>
     </div>
-    <div class="sleep-row" id="sleepChart"></div>
   </div>
 
-  <!-- HRV Sparkline -->
-  <div class="wcard">
-    <div class="wcard-hdr">
-      <span class="wcard-title">HRV-Verlauf</span>
-      <span class="wcard-meta" id="hrvRange"></span>
+  <div class="psection">
+    <span class="psection-label">Trainingstage pro Woche: <span id="daysVal" style="color:var(--blue)">4</span></span>
+    <div class="range-wrap">
+      <input type="range" id="pDays" min="2" max="7" value="4" oninput="document.getElementById('daysVal').textContent=this.value">
+      <div class="range-labels"><span>2 Tage</span><span>7 Tage</span></div>
     </div>
-    <div class="spark-wrap"><svg class="spark" id="sparkline"></svg></div>
   </div>
 
-  <!-- Training -->
-  <div class="wcard">
-    <div class="wcard-hdr">
-      <span class="wcard-title">Trainingsbelastung</span>
-      <span class="wcard-meta" id="totalCals"></span>
-    </div>
-    <div class="load-row" id="loadChart"></div>
-    <div class="act-row" id="actRow"></div>
-  </div>
+  <button class="btn-blue" style="margin-top:8px" onclick="saveProfile()">Coach starten 🚀</button>
+</div>
 
-  <!-- AI -->
-  <div class="ai-card">
-    <div class="ai-top">
-      <div class="ai-icon">🤖</div>
+<!-- ════════ MAIN APP ════════ -->
+<div class="screen hidden" id="appScreen">
+
+  <!-- Tab content -->
+  <div class="tab-content active" id="chatTab">
+    <div class="chat-header">
       <div>
-        <div class="ai-name">KI-Trainingscoach</div>
-        <div class="ai-desc">Schlaf · HRV · Training · Empfehlungen</div>
+        <h2>🚴 Coach</h2>
+        <p id="coachStatus">Bereit · Frag mich alles</p>
       </div>
-      <button class="ai-refresh" id="aiRefreshBtn" onclick="runAI()">↻ Neu</button>
+      <button class="sync-btn" id="syncBtn" onclick="doSync()">
+        <span id="syncIcon">↻</span> Sync
+      </button>
     </div>
-    <div id="aiContent">
-      <button class="analyze-btn" onclick="runAI()">🔍 Jetzt analysieren</button>
+
+    <div class="quick-prompts" id="quickPrompts">
+      <button class="qp-btn" onclick="askQuick('Wie war mein letztes Training?')">Letztes Training 🎯</button>
+      <button class="qp-btn" onclick="askQuick('Was soll ich heute trainieren?')">Heute trainieren 📅</button>
+      <button class="qp-btn" onclick="askQuick('Wie ist mein Fortschritt Richtung 4 W/kg?')">Fortschritt 📈</button>
+      <button class="qp-btn" onclick="askQuick('Zeig mir meine letzten SST-Einheiten im Vergleich')">SST Vergleich 🔍</button>
+      <button class="qp-btn" onclick="askQuick('Wie ist meine Erholung aktuell?')">Erholung 💤</button>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="msg coach">
+        <div class="msg-avatar">🏋️</div>
+        <div>
+          <div class="msg-bubble">Hallo! Ich bin dein persönlicher Cycling Coach.
+
+Ich kenne deine Garmin-Daten, deine Trainingshistorie und dein Ziel. Ich sage dir ehrlich was gut läuft und was nicht.
+
+Drücke **Sync** um deine aktuellen Daten zu laden, dann können wir loslegen. 🚴</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-wrap">
+      <textarea class="chat-input" id="chatInput" placeholder="Schreib dem Coach..." rows="1"
+        oninput="autoResize(this)"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMsg()">↑</button>
     </div>
   </div>
 
-  <div class="footer" id="footerTxt">Garmin Training Advisor</div>
+  <div class="tab-content" id="dashTab">
+    <div class="dash-header">
+      <div>
+        <h2>Übersicht</h2>
+        <p id="dashDate" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:2px"></p>
+      </div>
+      <button style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer" onclick="showProfile()">⚙️</button>
+    </div>
+    <div id="dashContent" style="overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;padding-bottom:20px">
+      <div style="text-align:center;padding:60px 20px;color:var(--text3);font-family:var(--mono);font-size:13px">
+        Sync drücken um Daten zu laden
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabbar -->
+  <div class="tabbar">
+    <button class="tab-btn active" id="tab-chat" onclick="switchTab('chat')">
+      <span class="tab-icon">💬</span>Coach
+    </button>
+    <button class="tab-btn" id="tab-dash" onclick="switchTab('dash')">
+      <span class="tab-icon">📊</span>Übersicht
+    </button>
+  </div>
+</div>
+
+<!-- ════════ ACTIVITY DETAIL ════════ -->
+<div id="detailScreen">
+  <div class="detail-header">
+    <button class="back-btn" onclick="closeDetail()">‹</button>
+    <div>
+      <div id="detailName" style="font-size:17px;font-weight:800"></div>
+      <div id="detailDate" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:2px"></div>
+    </div>
+  </div>
+  <div class="detail-body" id="detailBody"></div>
 </div>
 
 <script>
-const DAYS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
-let appData = { sleep: [], training: [] };
-let isDemo = false;
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
 let serverUrl = '', savedEmail = '', savedPassword = '';
+let profile = {};
+let dashData = { activities: [], health: [] };
+let isDemo = false;
 
-function dayLabel(ds) {
-  const d = new Date(ds);
-  return DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1];
-}
+// ─── Session ───
+function saveSession(u,e,p) { try{sessionStorage.setItem('cc_u',u);sessionStorage.setItem('cc_e',e);sessionStorage.setItem('cc_p',p);}catch{} }
+function loadSession() { try{return{url:sessionStorage.getItem('cc_u')||'',email:sessionStorage.getItem('cc_e')||'',pw:sessionStorage.getItem('cc_p')||''};}catch{return{};} }
+function saveProf(p) { try{localStorage.setItem('cc_profile',JSON.stringify(p));}catch{} }
+function loadProf() { try{return JSON.parse(localStorage.getItem('cc_profile')||'{}');}catch{return{};} }
 
-function saveSession(u, e, p) {
-  try { sessionStorage.setItem('ga_u',u); sessionStorage.setItem('ga_e',e); sessionStorage.setItem('ga_p',p); } catch {}
-}
-function loadSession() {
-  try { return { url: sessionStorage.getItem('ga_u')||'', email: sessionStorage.getItem('ga_e')||'', pw: sessionStorage.getItem('ga_p')||'' }; }
-  catch { return {}; }
-}
-
+// ─── Init ───
 window.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('dateLabel').textContent =
-    new Date().toLocaleDateString('de-DE', {weekday:'long',day:'numeric',month:'long'});
-  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone)
-    document.getElementById('installBanner').style.display = 'flex';
+  document.getElementById('dashDate').textContent = new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'});
+  profile = loadProf();
   const s = loadSession();
   if (s.url) document.getElementById('serverUrl').value = s.url;
   if (s.email) document.getElementById('emailInput').value = s.email;
-  if (s.url && s.email && s.pw) { serverUrl=s.url; savedEmail=s.email; savedPassword=s.pw; autoLoad(); }
+  if (s.url && s.email && s.pw) {
+    serverUrl=s.url; savedEmail=s.email; savedPassword=s.pw;
+    if (profile.ftp) showApp();
+    else autoConnect();
+  }
 });
 
-async function autoLoad() {
+async function autoConnect() {
   try {
-    const res = await fetch(`${serverUrl}/data`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({email:savedEmail, password:savedPassword})
-    });
-    const d = await res.json();
-    if (d.ok) { appData={sleep:d.sleep,training:d.training}; isDemo=false; showDash(); }
+    const r = await fetch(`${serverUrl}/health`);
+    if (r.ok) {
+      // Init DB
+      await fetch(`${serverUrl}/init`, {method:'POST'});
+      // Profil laden
+      const pr = await fetch(`${serverUrl}/profile`);
+      const pd = await pr.json();
+      if (pd.profile && pd.profile.ftp) {
+        profile = pd.profile; saveProf(profile);
+        showApp();
+      } else {
+        showScreen('profileScreen');
+      }
+    }
   } catch {}
 }
+
+// ═══════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════
 
 async function handleLogin() {
   const url = document.getElementById('serverUrl').value.trim().replace(/\/$/,'');
   const email = document.getElementById('emailInput').value.trim();
   const pw = document.getElementById('passwordInput').value;
-  document.getElementById('loginErr').style.display = 'none';
-  if (!url) { showErr('Bitte Railway URL eingeben.'); return; }
-  if (!email || !pw) { showErr('E-Mail und Passwort eingeben.'); return; }
+  document.getElementById('loginErr').style.display='none';
+  if (!url||!email||!pw) { showErr('Alle Felder ausfüllen.'); return; }
   const btn = document.getElementById('loginBtn');
-  btn.disabled = true; btn.textContent = 'Verbinde…';
+  btn.disabled=true; btn.textContent='Verbinde…';
   try {
     const h = await fetch(`${url}/health`);
     if (!h.ok) throw new Error('Server nicht erreichbar');
-    btn.textContent = 'Lade Garmin-Daten…';
-    const res = await fetch(`${url}/data`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({email, password:pw})
-    });
-    const d = await res.json();
-    if (!d.ok) throw new Error(d.error||'Fehler');
+    // DB init
+    await fetch(`${url}/init`, {method:'POST'});
     serverUrl=url; savedEmail=email; savedPassword=pw;
     saveSession(url,email,pw);
-    appData={sleep:d.sleep,training:d.training}; isDemo=false; showDash();
+    // Profil prüfen
+    const pr = await fetch(`${url}/profile`);
+    const pd = await pr.json();
+    if (pd.profile && pd.profile.ftp) {
+      profile = pd.profile; saveProf(profile);
+      showApp();
+    } else {
+      showScreen('profileScreen');
+    }
   } catch(e) {
-    showErr(e.message.includes('fetch')||e.message.includes('network') ? 'Server nicht erreichbar. Railway URL prüfen.' : `Fehler: ${e.message}`);
-    btn.disabled=false; btn.textContent='Verbinden & Daten laden';
+    showErr(`Fehler: ${e.message}`);
+    btn.disabled=false; btn.textContent='Verbinden';
   }
 }
 
 function showErr(m) { const e=document.getElementById('loginErr'); e.textContent=m; e.style.display='block'; }
-function loadDemo() { appData=demoData(); isDemo=true; showDash(); }
-function doLogout() {
-  try { sessionStorage.clear(); } catch {}
-  document.getElementById('dashScreen').classList.add('hidden');
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('aiContent').innerHTML='<button class="analyze-btn" onclick="runAI()">🔍 Jetzt analysieren</button>';
-  document.getElementById('aiRefreshBtn').style.display='none';
+
+function loadDemo() {
+  isDemo = true;
+  profile = {ftp:210, weight:63, goal_wpkg:4.0, level:'Fortgeschritten', days:4, goal:'FTP steigern'};
+  showApp();
 }
-function showDash() {
-  document.getElementById('loginScreen').classList.add('hidden');
-  document.getElementById('dashScreen').classList.remove('hidden');
-  render();
-  if (!isDemo) setInterval(refreshData, 30*60*1000);
+
+// ═══════════════════════════════════════════
+// PROFILE
+// ═══════════════════════════════════════════
+
+function selectChoice(gridId, btn) {
+  document.querySelectorAll(`#${gridId} .choice-btn`).forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
 }
-async function refreshData() {
-  if (isDemo) { render(); return; }
-  document.getElementById('syncDot').className='sdot orange';
-  document.getElementById('syncLabel').textContent='Aktualisiere…';
+
+document.querySelectorAll('#goalGrid .choice-btn').forEach(b=>b.onclick=()=>selectChoice('goalGrid',b));
+document.querySelectorAll('#levelGrid .choice-btn').forEach(b=>b.onclick=()=>selectChoice('levelGrid',b));
+
+async function saveProfile() {
+  const ftp = parseInt(document.getElementById('pFtp').value)||210;
+  const weight = parseFloat(document.getElementById('pWeight').value)||63;
+  const age = parseInt(document.getElementById('pAge').value)||30;
+  const goal_wpkg = parseFloat(document.getElementById('pGoalWpkg').value)||4.0;
+  const days = parseInt(document.getElementById('pDays').value)||4;
+  const goal = document.querySelector('#goalGrid .choice-btn.active')?.dataset.val||'FTP steigern';
+  const level = document.querySelector('#levelGrid .choice-btn.active')?.dataset.val||'Fortgeschritten';
+
+  profile = {ftp, weight, age, goal_wpkg, days, goal, level};
+  saveProf(profile);
+
+  if (!isDemo) {
+    try {
+      await fetch(`${serverUrl}/profile`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(profile)
+      });
+    } catch(e) { console.error(e); }
+  }
+
+  showApp();
+  // Initiale Coach-Nachricht
+  setTimeout(() => addCoachMsg(`Perfekt! Ich kenne jetzt dein Profil:
+
+🎯 Ziel: ${goal_wpkg} W/kg = ${Math.round(goal_wpkg*weight)}W FTP
+⚡ Aktuell: ${ftp}W = ${(ftp/weight).toFixed(2)} W/kg
+📈 Noch ${Math.round(goal_wpkg*weight)-ftp}W zu gewinnen
+
+Drück **Sync** um deine Trainingsdaten zu laden — dann analysieren wir wo du stehst und was als nächstes kommt. 🚴`), 300);
+}
+
+function showProfile() {
+  // Aktuelle Werte laden
+  if (profile.ftp) document.getElementById('pFtp').value = profile.ftp;
+  if (profile.weight) document.getElementById('pWeight').value = profile.weight;
+  if (profile.goal_wpkg) document.getElementById('pGoalWpkg').value = profile.goal_wpkg;
+  if (profile.age) document.getElementById('pAge').value = profile.age;
+  if (profile.days) { document.getElementById('pDays').value=profile.days; document.getElementById('daysVal').textContent=profile.days; }
+  showScreen('profileScreen');
+}
+
+// ═══════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function showApp() {
+  showScreen('appScreen');
+  loadDashboard();
+  loadChatHistory();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`${tab}Tab`).classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+// ═══════════════════════════════════════════
+// SYNC
+// ═══════════════════════════════════════════
+
+async function doSync() {
+  if (isDemo) { addCoachMsg('Demo-Modus: Kein echter Sync möglich. Verbinde dich mit deinem Railway-Server.'); return; }
+  const btn = document.getElementById('syncBtn');
+  const icon = document.getElementById('syncIcon');
+  btn.classList.add('loading'); icon.textContent='…';
+  document.getElementById('coachStatus').textContent = 'Synchronisiere Garmin…';
+
   try {
-    const res = await fetch(`${serverUrl}/data`, {
+    const res = await fetch(`${serverUrl}/sync`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({email:savedEmail, password:savedPassword})
+      body: JSON.stringify({email:savedEmail, password:savedPassword, days:30})
     });
     const d = await res.json();
-    if (d.ok) { appData={sleep:d.sleep,training:d.training}; render(); }
-  } catch {}
-  document.getElementById('syncDot').className='sdot green';
-  document.getElementById('syncLabel').textContent='Verbunden';
-  document.getElementById('syncTime').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-}
+    if (!d.ok) throw new Error(d.error);
 
-function render() {
-  const {sleep, training} = appData;
-  if (!sleep.length) return;
-  const today = sleep[sleep.length-1];
-  const hrvVals = sleep.map(s=>s.hrv).filter(Boolean);
-  const avgHrv = hrvVals.length ? Math.round(hrvVals.reduce((a,b)=>a+b,0)/hrvVals.length) : 0;
-  const totalLoad = training.reduce((a,b)=>a+(b.load||0),0);
-  const totalCals = training.reduce((a,b)=>a+(b.calories||0),0);
+    document.getElementById('coachStatus').textContent = `${d.activities_saved} neue Einheiten · ${d.health_saved} Gesundheitsdaten`;
+    await loadDashboard();
 
-  document.getElementById('syncTime').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-  document.getElementById('syncLabel').textContent=isDemo?'Demo':'Verbunden';
-  document.getElementById('footerTxt').textContent=isDemo?'Demo-Modus · Echte Daten nach Garmin API-Zugang':'Garmin Training Advisor · Echtdaten';
-
-  // Sleep ring
-  const sc = today.score||75;
-  drawRing('sleepRing', sc, '#0a84ff', 70);
-  document.getElementById('sleepScore').textContent=sc;
-  document.getElementById('sleepDur').textContent=`${today.duration}h Schlaf`;
-
-  // Recovery
-  const rec = today.hrv&&avgHrv
-    ? today.hrv>avgHrv*1.05 ? {t:'OPTIMAL',p:92,c:'#30d158'}
-    : today.hrv>avgHrv*0.9  ? {t:'GUT',p:74,c:'#30d158'}
-    : today.hrv>avgHrv*0.75 ? {t:'MODERAT',p:50,c:'#ff9f0a'}
-    : {t:'NIEDRIG',p:24,c:'#ff453a'}
-    : {t:'GUT',p:68,c:'#30d158'};
-  drawRing('recovRing', rec.p, rec.c, 70);
-  const rl=document.getElementById('recovLabel'); rl.textContent=rec.t; rl.style.color=rec.c;
-  document.getElementById('hrvToday').textContent=`HRV ${today.hrv||'--'} ms`;
-
-  document.getElementById('avgHrv').textContent=avgHrv||'--';
-  if (hrvVals.length>=2) {
-    const trend=Math.round(((hrvVals[hrvVals.length-1]-hrvVals[0])/hrvVals[0])*100);
-    document.getElementById('hrvTrend').textContent=trend>=0?`↑ +${trend}% Woche`:`↓ ${trend}% Woche`;
-  }
-  document.getElementById('weekLoad').textContent=totalLoad;
-  document.getElementById('loadStatus').textContent=totalLoad>400?'⚠️ Hoch':totalLoad>200?'✓ Optimal':'↓ Niedrig';
-
-  // Sleep chart
-  const sc2=document.getElementById('sleepChart'); sc2.innerHTML='';
-  const mx=Math.max(...sleep.map(s=>s.duration),1);
-  sleep.forEach(s=>{
-    const col=document.createElement('div'); col.className='sleep-col';
-    const dH=Math.round((s.deepSleep/mx)*80);
-    const rH=Math.round((s.remSleep/mx)*80);
-    const lH=Math.round(((s.duration-s.deepSleep-s.remSleep)/mx)*80);
-    col.innerHTML=`<div class="sleep-stack">
-      <div class="sl" style="height:${Math.max(lH,0)}px;background:rgba(10,132,255,0.15)"></div>
-      <div class="sl" style="height:${Math.max(rH,0)}px;background:rgba(10,132,255,0.45)"></div>
-      <div class="sl" style="height:${Math.max(dH,0)}px;background:#0a84ff"></div>
-    </div><span class="bar-day">${dayLabel(s.date)}</span>`;
-    sc2.appendChild(col);
-  });
-
-  // Sparkline
-  if (hrvVals.length) {
-    drawSpark(sleep.map(s=>s.hrv||0));
-    document.getElementById('hrvRange').textContent=`${Math.min(...hrvVals)} – ${Math.max(...hrvVals)} ms`;
-  }
-
-  // Load chart
-  const lc=document.getElementById('loadChart'); lc.innerHTML='';
-  const ml=Math.max(...training.map(t=>t.load),1);
-  training.forEach(t=>{
-    const col=document.createElement('div'); col.className='load-col';
-    const h=Math.round((t.load/ml)*58);
-    const c=t.load>80?'#ff9f0a':t.load>40?'#5ac8fa':t.load>0?'#30d158':'rgba(255,255,255,0.06)';
-    col.innerHTML=`<div class="load-fill-w"><div class="load-fill" style="height:${Math.max(h,3)}px;background:${c};box-shadow:0 0 8px ${c}66;border-radius:5px 5px 0 0"></div></div><span class="bar-day">${dayLabel(t.date)}</span>`;
-    lc.appendChild(col);
-  });
-
-  // Activity chips
-  const ar=document.getElementById('actRow'); ar.innerHTML='';
-  training.forEach(t=>{
-    const ch=document.createElement('div'); ch.className='act-chip';
-    ch.innerHTML=`<span class="act-emoji">${t.emoji||'⚡'}</span><span class="act-type">${t.type}</span><span class="act-day">${dayLabel(t.date)}</span>`;
-    ar.appendChild(ch);
-  });
-  document.getElementById('totalCals').textContent=`${totalCals.toLocaleString()} kcal`;
-}
-
-function drawRing(id, pct, color, size) {
-  const svg=document.getElementById(id);
-  const s=7, r=(size-s)/2, c=2*Math.PI*r, dash=(pct/100)*c;
-  svg.innerHTML=`
-    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="${s}"/>
-    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${s}"
-      stroke-dasharray="${dash} ${c}" stroke-linecap="round"
-      transform="rotate(-90 ${size/2} ${size/2})"
-      style="filter:drop-shadow(0 0 5px ${color}bb);transition:stroke-dasharray 1s ease"/>`;
-}
-
-function drawSpark(vals) {
-  const svg=document.getElementById('sparkline');
-  const W=svg.parentElement.clientWidth||280, H=48;
-  const valid=vals.filter(v=>v>0);
-  if (!valid.length) return;
-  const mn=Math.min(...valid)-5, mx=Math.max(...valid)+5;
-  const pts=vals.map((v,i)=>({x:(i/(vals.length-1))*W, y:v>0?H-((v-mn)/(mx-mn))*H:H}));
-  const path=pts.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.innerHTML=`<defs>
-    <linearGradient id="spg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#5ac8fa" stop-opacity="0.28"/>
-      <stop offset="100%" stop-color="#5ac8fa" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-  <path d="${path} L${W},${H} L0,${H} Z" fill="url(#spg)"/>
-  <path d="${path}" fill="none" stroke="#5ac8fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #5ac8fabb)"/>
-  ${pts.filter((_,i)=>vals[i]>0).map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#5ac8fa" style="filter:drop-shadow(0 0 3px #5ac8fa)"/>`).join('')}`;
-}
-
-async function runAI() {
-  const {sleep, training}=appData;
-  const content=document.getElementById('aiContent');
-  const btn=document.getElementById('aiRefreshBtn');
-  content.innerHTML=`<div class="spinner"></div><p class="spin-label">Analysiere deine Daten…</p>`;
-  btn.style.display='none';
-  try {
-    // KI-Analyse läuft über Railway – kein CORS-Problem
-    const res=await fetch(`${serverUrl}/analyze`,{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sleep, training})
-    });
-    const d=await res.json();
-    if(!d.ok) throw new Error(d.error||'Analyse fehlgeschlagen');
-    const text=d.text||'Keine Antwort.';
-    content.innerHTML=`<div class="ai-output">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
-    btn.style.display='block';
+    if (d.activities_saved > 0) {
+      addCoachMsg(`✅ Sync abgeschlossen!\n${d.activities_saved} neue Trainingseinheiten und ${d.health_saved} Tage Gesundheitsdaten geladen.\n\nWillst du dass ich dein letztes Training analysiere?`);
+    } else {
+      addCoachMsg('✅ Alles aktuell — keine neuen Einheiten seit dem letzten Sync.');
+    }
   } catch(e) {
-    content.innerHTML=`<p style="color:#ff6b60;font-size:13px">Fehler: ${e.message}</p><button class="analyze-btn" style="margin-top:12px" onclick="runAI()">↻ Erneut</button>`;
+    addCoachMsg(`❌ Sync-Fehler: ${e.message}`);
   }
+
+  btn.classList.remove('loading'); icon.textContent='↻';
 }
 
-function demoData() {
-  return {
-    sleep:[
-      {date:'2026-04-13',duration:7.2,deepSleep:1.4,remSleep:1.8,lightSleep:4.0,score:78,hrv:52},
-      {date:'2026-04-14',duration:5.8,deepSleep:0.9,remSleep:1.2,lightSleep:3.7,score:61,hrv:38},
-      {date:'2026-04-15',duration:8.1,deepSleep:1.9,remSleep:2.1,lightSleep:4.1,score:88,hrv:67},
-      {date:'2026-04-16',duration:6.5,deepSleep:1.1,remSleep:1.5,lightSleep:3.9,score:70,hrv:45},
-      {date:'2026-04-17',duration:7.8,deepSleep:1.7,remSleep:1.9,lightSleep:4.2,score:84,hrv:61},
-      {date:'2026-04-18',duration:6.9,deepSleep:1.3,remSleep:1.6,lightSleep:4.0,score:74,hrv:49},
-      {date:'2026-04-19',duration:7.5,deepSleep:1.6,remSleep:1.8,lightSleep:4.1,score:80,hrv:55},
-    ],
-    training:[
-      {date:'2026-04-13',type:'Laufen',  emoji:'🏃',duration:45,load:72, calories:380},
-      {date:'2026-04-14',type:'Kraft',   emoji:'💪',duration:60,load:85, calories:290},
-      {date:'2026-04-15',type:'Ruhetag', emoji:'😴',duration:0, load:0,  calories:0},
-      {date:'2026-04-16',type:'Radfahren',emoji:'🚴',duration:90,load:110,calories:650},
-      {date:'2026-04-17',type:'Laufen',  emoji:'🏃',duration:30,load:48, calories:240},
-      {date:'2026-04-18',type:'Schwimmen',emoji:'🏊',duration:45,load:65, calories:310},
-      {date:'2026-04-19',type:'Yoga',    emoji:'🧘',duration:40,load:20, calories:120},
-    ]
-  };
+// ═══════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════
+
+async function loadDashboard() {
+  if (isDemo) { renderDemoDash(); return; }
+  try {
+    const res = await fetch(`${serverUrl}/dashboard`, {method:'POST'});
+    const d = await res.json();
+    if (d.ok) { dashData = d; renderDashboard(); }
+  } catch(e) { console.error(e); }
+}
+
+function renderDashboard() {
+  const { activities, health } = dashData;
+  const ftp = profile.ftp || 210;
+  const weight = profile.weight || 63;
+  const goal_wpkg = profile.goal_wpkg || 4.0;
+
+  // Stats
+  const cycling = activities.filter(a => a.type && (a.type.includes('cycl') || a.type.includes('virtual')));
+  const weekLoad = activities.filter(a => {
+    const d = new Date(a.date);
+    const now = new Date();
+    return (now - d) < 7*24*60*60*1000;
+  }).reduce((s,a)=>s+(a.training_load||0),0);
+  const todayHealth = health[0] || {};
+  const wpkg = (ftp/weight).toFixed(2);
+
+  let html = `
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--blue)">${ftp}</div>
+        <div class="stat-unit">W FTP</div>
+        <div class="stat-label">${wpkg} W/kg</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--orange)">${Math.round(weekLoad)}</div>
+        <div class="stat-unit">ATL</div>
+        <div class="stat-label">Diese Woche</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--cyan)">${todayHealth.hrv||'--'}</div>
+        <div class="stat-unit">ms HRV</div>
+        <div class="stat-label">Heute</div>
+      </div>
+    </div>`;
+
+  // Health
+  if (health.length) {
+    const h = health[0];
+    html += `
+      <div class="health-row">
+        <div class="health-card">
+          <div class="health-label">SCHLAF HEUTE</div>
+          <div class="health-val" style="color:var(--blue)">${h.sleep_duration||'--'}<span class="health-unit">h</span></div>
+          <div class="health-sub">Score ${h.sleep_score||'--'} / 100</div>
+        </div>
+        <div class="health-card">
+          <div class="health-label">ERHOLUNG</div>
+          <div class="health-val" style="color:${h.hrv>55?'var(--green)':h.hrv>40?'var(--orange)':'var(--red)'}">${h.hrv||'--'}<span class="health-unit">ms</span></div>
+          <div class="health-sub">Ruhepuls ${h.resting_hr||'--'} bpm</div>
+        </div>
+      </div>`;
+  }
+
+  // Activities
+  if (activities.length) {
+    html += `<div class="section-title">Letzte Einheiten</div>`;
+    activities.slice(0,10).forEach(a => {
+      const isCycling = a.type && (a.type.includes('cycl') || a.type.includes('virtual') || a.type.includes('zwift'));
+      const emoji = isCycling ? '🚴' : a.type === 'running' ? '🏃' : a.type === 'swimming' ? '🏊' : '⚡';
+      const pctFtp = a.avg_power ? Math.round(a.avg_power/ftp*100) : null;
+      html += `
+        <div class="act-card" onclick="openDetail(${a.id})">
+          <div class="act-card-top">
+            <span class="act-emoji-big">${emoji}</span>
+            <div>
+              <div class="act-title">${a.name||'Training'}</div>
+              <div class="act-date">${a.date}</div>
+            </div>
+          </div>
+          <div class="act-metrics">
+            ${a.duration_min?`<div class="act-metric"><span>${a.duration_min}</span> min</div>`:''}
+            ${a.avg_power?`<div class="act-metric"><span>${a.avg_power}W</span>${pctFtp?` (${pctFtp}% FTP)`:''}</div>`:''}
+            ${a.avg_hr?`<div class="act-metric">Ø <span>${a.avg_hr}</span> bpm</div>`:''}
+            ${a.training_load?`<div class="act-metric">Load <span>${Math.round(a.training_load)}</span></div>`:''}
+          </div>
+        </div>`;
+    });
+  }
+
+  document.getElementById('dashContent').innerHTML = html;
+}
+
+function renderDemoDash() {
+  document.getElementById('dashContent').innerHTML = `
+    <div style="text-align:center;padding:40px 20px">
+      <div style="font-size:48px;margin-bottom:16px">🚴</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px">Demo-Modus</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">Verbinde deinen Railway-Server um echte Garmin-Daten zu laden.</div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════
+// ACTIVITY DETAIL
+// ═══════════════════════════════════════════
+
+function openDetail(actId) {
+  const act = dashData.activities.find(a => a.id == actId);
+  if (!act) return;
+
+  const ftp = profile.ftp || 210;
+  const laps = Array.isArray(act.laps) ? act.laps : (typeof act.laps === 'string' ? JSON.parse(act.laps||'[]') : []);
+  const maxLapPower = Math.max(...laps.map(l=>l.avg_power||0), 1);
+
+  function zoneColor(power, ftp) {
+    const pct = power/ftp*100;
+    if (pct < 56) return '#5ac8fa';
+    if (pct < 76) return '#30d158';
+    if (pct < 91) return '#ff9f0a';
+    if (pct < 106) return '#ff6b22';
+    return '#ff453a';
+  }
+  function zoneName(power, ftp) {
+    const pct = power/ftp*100;
+    if (pct < 56) return 'Z1 Erholung';
+    if (pct < 76) return 'Z2 Grundlage';
+    if (pct < 91) return 'Z3 SST/Tempo';
+    if (pct < 106) return 'Z4 Schwelle';
+    if (pct < 121) return 'Z5 VO2max';
+    return 'Z6+ Anaerob';
+  }
+
+  document.getElementById('detailName').textContent = act.name || 'Training';
+  document.getElementById('detailDate').textContent = act.date;
+
+  let html = `
+    <div class="detail-section">
+      <div class="detail-section-title">Übersicht</div>
+      <div class="detail-row"><span class="detail-key">Dauer</span><span class="detail-val">${act.duration_min} min</span></div>
+      ${act.avg_power?`<div class="detail-row"><span class="detail-key">Ø Leistung</span><span class="detail-val" style="color:var(--orange)">${act.avg_power}W <span style="font-size:11px;color:var(--text3)">(${Math.round(act.avg_power/ftp*100)}% FTP)</span></span></div>`:''}
+      ${act.norm_power?`<div class="detail-row"><span class="detail-key">Norm. Leistung</span><span class="detail-val">${Math.round(act.norm_power)}W</span></div>`:''}
+      ${act.max_20min_power?`<div class="detail-row"><span class="detail-key">20min Peak</span><span class="detail-val" style="color:var(--blue)">${act.max_20min_power}W</span></div>`:''}
+      ${act.avg_hr?`<div class="detail-row"><span class="detail-key">Ø Herzrate</span><span class="detail-val">${act.avg_hr} bpm</span></div>`:''}
+      ${act.aerobic_te?`<div class="detail-row"><span class="detail-key">Aerob. Effekt</span><span class="detail-val">${act.aerobic_te?.toFixed(1)}</span></div>`:''}
+      ${act.training_load?`<div class="detail-row"><span class="detail-key">Training Load</span><span class="detail-val">${Math.round(act.training_load)} ATL</span></div>`:''}
+    </div>`;
+
+  if (laps.length > 0) {
+    html += `<div class="detail-section"><div class="detail-section-title">Lap-Analyse</div>`;
+    laps.forEach(l => {
+      const c = zoneColor(l.avg_power||0, ftp);
+      const zn = zoneName(l.avg_power||0, ftp);
+      const barW = Math.round(((l.avg_power||0)/maxLapPower)*100);
+      html += `
+        <div class="lap-row">
+          <div class="lap-top">
+            <span class="lap-name">Lap ${l.index} · ${l.duration_min}min</span>
+            <span class="lap-power" style="color:${c}">${l.avg_power||'--'}W</span>
+          </div>
+          <div class="lap-bar-wrap"><div class="lap-bar" style="width:${barW}%;background:${c}"></div></div>
+          <div class="lap-meta">${zn} · HR ${l.avg_hr||'--'}bpm · Kadenz ${l.cadence||'--'}</div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<button class="ask-coach-btn" onclick="askAboutActivity(${act.id})">💬 Coach nach dieser Einheit fragen</button>`;
+
+  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailScreen').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detailScreen').classList.remove('open');
+}
+
+function askAboutActivity(actId) {
+  const act = dashData.activities.find(a => a.id == actId);
+  if (!act) return;
+  closeDetail();
+  switchTab('chat');
+  document.getElementById('chatInput').value = `Analysiere bitte mein Training "${act.name}" vom ${act.date}`;
+  sendMsg();
+}
+
+// ═══════════════════════════════════════════
+// CHAT
+// ═══════════════════════════════════════════
+
+async function loadChatHistory() {
+  if (isDemo) return;
+  try {
+    const res = await fetch(`${serverUrl}/history`);
+    const d = await res.json();
+    if (d.ok && d.messages.length > 0) {
+      const msgs = document.getElementById('messages');
+      // Nur die letzten 20 Nachrichten laden
+      d.messages.slice(-20).forEach(m => {
+        if (m.role === 'user') addUserMsg(m.content, false);
+        else addCoachMsg(m.content, false);
+      });
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+  } catch(e) { console.error(e); }
+}
+
+function addCoachMsg(text, scroll=true) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg coach';
+  div.innerHTML = `<div class="msg-avatar">🏋️</div><div><div class="msg-bubble">${escHtml(text)}</div></div>`;
+  msgs.appendChild(div);
+  if (scroll) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addUserMsg(text, scroll=true) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `<div class="msg-bubble">${escHtml(text)}</div><div class="msg-avatar">👤</div>`;
+  msgs.appendChild(div);
+  if (scroll) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg coach'; div.id = 'typing';
+  div.innerHTML = `<div class="msg-avatar">🏋️</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+async function sendMsg() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = ''; input.style.height = '';
+  document.getElementById('sendBtn').disabled = true;
+
+  addUserMsg(text);
+
+  if (isDemo) {
+    showTyping();
+    await new Promise(r=>setTimeout(r,1500));
+    removeTyping();
+    addCoachMsg('Im Demo-Modus ist kein echtes Coach-Feedback verfügbar. Verbinde deinen Railway-Server mit Anthropic API Key für echte Analysen.');
+    document.getElementById('sendBtn').disabled = false;
+    return;
+  }
+
+  showTyping();
+  try {
+    const res = await fetch(`${serverUrl}/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: text})
+    });
+    const d = await res.json();
+    removeTyping();
+    if (d.ok) addCoachMsg(d.reply);
+    else addCoachMsg(`❌ Fehler: ${d.error}`);
+  } catch(e) {
+    removeTyping();
+    addCoachMsg(`❌ Verbindungsfehler: ${e.message}`);
+  }
+  document.getElementById('sendBtn').disabled = false;
+}
+
+function askQuick(text) {
+  document.getElementById('chatInput').value = text;
+  sendMsg();
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
 }
 </script>
 </body>
