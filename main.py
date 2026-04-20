@@ -8,14 +8,14 @@ import json
 import os
 import re
 from datetime import date, timedelta, datetime
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
 from garminconnect import Garmin
 import requests as req
 import psycopg
 from psycopg.rows import dict_row
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
 
 # ══════════════════════════════════════════════
@@ -377,6 +377,10 @@ Antworte präzise, datenbasiert und auf Deutsch. Wenn du Trainingseinheiten empf
 # ══════════════════════════════════════════════
 # ROUTES
 # ══════════════════════════════════════════════
+
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
 
 @app.route("/health")
 def health():
