@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Garmin Advisor">
+<meta name="theme-color" content="#000000">
+<title>Garmin Training Advisor</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #000000;
+  --bg2:      #0a0a0a;
+  --card:     #111111;
+  --card2:    #1a1a1a;
+  --border:   rgba(255,255,255,0.09);
+  --border2:  rgba(255,255,255,0.05);
+  --text:     #ffffff;
+  --text2:    rgba(255,255,255,0.55);
+  --text3:    rgba(255,255,255,0.28);
+  --blue:     #0a84ff;
+  --green:    #30d158;
+  --orange:   #ff9f0a;
+  --red:      #ff453a;
+  --cyan:     #5ac8fa;
+  --purple:   #bf5af2;
+  --pink:     #ff375f;
+  --mono:     'JetBrains Mono', monospace;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overscroll-behavior: none; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Figtree', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── SCREENS ── */
+.screen { position: fixed; inset: 0; z-index: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.screen.hidden { display: none; }
+
+/* ══════════════════════════════════════
+   LOGIN
+══════════════════════════════════════ */
+#loginScreen {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: calc(var(--safe-top) + 48px) 24px calc(var(--safe-bot) + 40px);
+  min-height: 100%;
+  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(10,132,255,0.18), transparent);
+}
+
+.brand { text-align: center; margin-bottom: 44px; }
+.brand-ring {
+  width: 88px; height: 88px; border-radius: 26px;
+  background: linear-gradient(145deg, #0055cc, #0a84ff);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px; margin: 0 auto 22px;
+  box-shadow: 0 0 0 1px rgba(10,132,255,0.4), 0 24px 64px rgba(10,132,255,0.35);
+  animation: float 4s ease-in-out infinite;
+}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+.brand h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 6px; }
+.brand p { font-size: 14px; color: var(--text2); line-height: 1.5; }
+
+.login-box {
+  width: 100%; max-width: 360px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  padding: 28px 22px 24px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+}
+.flabel { font-size: 12px; font-weight: 600; color: var(--text2); display: block; margin-bottom: 8px; letter-spacing: 0.2px; }
+.finput {
+  width: 100%; padding: 14px 16px; margin-bottom: 12px;
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 14px; color: var(--text); font-size: 16px;
+  font-family: var(--mono); outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+}
+.finput:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(10,132,255,0.15); }
+
+.btn-blue {
+  width: 100%; padding: 16px;
+  background: var(--blue);
+  border: none; border-radius: 16px; color: #fff;
+  font-size: 16px; font-weight: 700; font-family: 'Figtree', sans-serif;
+  cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+  letter-spacing: -0.1px;
+}
+.btn-blue:active { opacity: 0.85; transform: scale(0.98); }
+.btn-blue:disabled { opacity: 0.4; transform: none; }
+
+.btn-ghost {
+  width: 100%; padding: 14px; margin-top: 10px;
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 14px; color: var(--text2);
+  font-size: 15px; font-weight: 600; font-family: 'Figtree', sans-serif;
+  cursor: pointer; transition: opacity 0.15s;
+}
+.btn-ghost:active { opacity: 0.7; }
+
+.divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.divider-line { flex: 1; height: 1px; background: var(--border2); }
+.divider-text { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+
+.login-notice {
+  margin-top: 16px; padding: 12px 14px;
+  background: rgba(10,132,255,0.08); border: 1px solid rgba(10,132,255,0.18);
+  border-radius: 12px; font-size: 12px; color: rgba(90,200,250,0.8); line-height: 1.6; text-align: center;
+}
+.login-err {
+  margin-top: 12px; padding: 12px 14px;
+  background: rgba(255,69,58,0.1); border: 1px solid rgba(255,69,58,0.2);
+  border-radius: 12px; font-size: 13px; color: #ff6b60; line-height: 1.5; display: none;
+}
+
+/* ══════════════════════════════════════
+   DASHBOARD
+══════════════════════════════════════ */
+#dashScreen {
+  padding: calc(var(--safe-top) + 16px) 0 calc(var(--safe-bot) + 24px);
+  background: var(--bg);
+}
+
+/* Topbar */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 20px 20px;
+}
+.topbar-left h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.topbar-left p { font-size: 13px; color: var(--text2); margin-top: 2px; font-family: var(--mono); }
+.logout-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--card2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; cursor: pointer; color: var(--text2);
+}
+
+/* Sync pill */
+.sync-pill {
+  margin: 0 16px 16px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 100px; padding: 8px 14px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text2); font-family: var(--mono);
+}
+.sdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sdot.green { background: var(--green); box-shadow: 0 0 8px var(--green); animation: sdot-pulse 2s infinite; }
+.sdot.orange { background: var(--orange); }
+@keyframes sdot-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.sync-time { margin-left: auto; font-size: 11px; color: var(--text3); }
+.sync-refresh { background: none; border: none; color: var(--blue); font-size: 17px; cursor: pointer; padding: 0 2px; line-height: 1; }
+
+/* Install banner */
+.install-banner {
+  margin: 0 16px 12px; padding: 12px 14px;
+  background: rgba(191,90,242,0.08); border: 1px solid rgba(191,90,242,0.2);
+  border-radius: 14px; font-size: 12px; color: rgba(191,90,242,0.9); line-height: 1.6;
+  display: none; gap: 10px; align-items: flex-start;
+}
+.install-banner button { background: none; border: none; color: var(--text3); font-size: 18px; cursor: pointer; padding: 0; margin-left: auto; flex-shrink: 0; line-height: 1; }
+
+/* ── Hero cards grid ── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; margin-bottom: 10px; }
+
+.hcard {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 22px; padding: 18px 16px;
+  position: relative; overflow: hidden;
+}
+
+/* Glow blobs per card */
+.hcard.c-blue::before  { content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(10,132,255,0.25), transparent 70%); pointer-events:none; }
+.hcard.c-green::before { content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(48,209,88,0.25), transparent 70%); pointer-events:none; }
+.hcard.c-cyan::before  { content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(90,200,250,0.2), transparent 70%); pointer-events:none; }
+.hcard.c-orange::before{ content:''; position:absolute; top:-30px; right:-20px; width:80px; height:80px; border-radius:50%; background:radial-gradient(circle, rgba(255,159,10,0.2), transparent 70%); pointer-events:none; }
+
+.clabel { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 14px; letter-spacing: 0.2px; }
+.ring-wrap { position: relative; width: 70px; height: 70px; }
+.ring-val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-num { font-size: 20px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+.ring-unit { font-size: 9px; color: var(--text2); margin-top: 1px; font-family: var(--mono); }
+.csub { font-size: 12px; color: var(--text2); margin-top: 10px; font-family: var(--mono); }
+.big-num { font-size: 34px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
+.big-unit { font-size: 12px; color: var(--text2); margin-top: 4px; font-family: var(--mono); }
+
+/* ── Wide cards ── */
+.wcard {
+  margin: 0 16px 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 22px; padding: 18px 16px;
+}
+.wcard-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.wcard-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.wcard-meta { font-size: 12px; color: var(--text2); font-family: var(--mono); }
+
+/* Sleep bars */
+.sleep-row { display: flex; gap: 8px; align-items: flex-end; }
+.sleep-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.sleep-stack { width: 26px; height: 80px; background: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+.sl { width: 100%; transition: height 0.8s ease; }
+
+/* Load bars */
+.load-row { display: flex; gap: 6px; align-items: flex-end; height: 64px; margin-bottom: 14px; }
+.load-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; }
+.load-fill-w { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.load-fill { width: 100%; border-radius: 5px 5px 0 0; min-height: 3px; }
+
+.bar-day { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+
+/* Activity chips */
+.act-row { display: flex; gap: 6px; }
+.act-chip {
+  flex: 1; padding: 10px 4px; border-radius: 14px;
+  background: var(--card2); border: 1px solid var(--border2);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.act-emoji { font-size: 20px; }
+.act-type { font-size: 9px; color: var(--text); font-family: var(--mono); text-align: center; line-height: 1.3; font-weight: 500; }
+.act-day { font-size: 9px; color: var(--text3); font-family: var(--mono); }
+
+/* Sparkline */
+.spark-wrap { height: 48px; }
+svg.spark { width: 100%; height: 100%; overflow: visible; }
+
+/* ── AI Card ── */
+.ai-card {
+  margin: 0 16px 10px;
+  background: linear-gradient(145deg, #0a0a14, #0d0d20);
+  border: 1px solid rgba(10,132,255,0.2);
+  border-radius: 22px; padding: 20px 18px;
+  position: relative; overflow: hidden;
+}
+.ai-card::before {
+  content: ''; position: absolute; bottom: -40px; right: -40px;
+  width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(10,132,255,0.12), transparent 70%);
+  pointer-events: none;
+}
+.ai-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ai-icon {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: var(--blue); display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(10,132,255,0.4);
+}
+.ai-name { font-size: 15px; font-weight: 700; }
+.ai-desc { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 1px; }
+.ai-refresh {
+  margin-left: auto; padding: 6px 12px;
+  background: rgba(10,132,255,0.15); border: 1px solid rgba(10,132,255,0.3);
+  border-radius: 10px; color: var(--cyan); font-size: 11px; font-weight: 600;
+  cursor: pointer; font-family: var(--mono); display: none;
+}
+
+.analyze-btn {
+  width: 100%; padding: 16px;
+  background: var(--blue);
+  border: none; border-radius: 14px; color: #fff;
+  font-size: 15px; font-weight: 700; font-family: 'Figtree', sans-serif;
+  cursor: pointer; box-shadow: 0 4px 20px rgba(10,132,255,0.4);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.analyze-btn:active { opacity: 0.85; transform: scale(0.98); }
+
+.ai-output {
+  font-size: 14px; line-height: 1.75; color: rgba(255,255,255,0.88);
+  white-space: pre-wrap; animation: fadeUp 0.4s ease;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+.spinner {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2.5px solid rgba(10,132,255,0.2); border-top-color: var(--blue);
+  animation: spin 0.8s linear infinite; margin: 20px auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-label { text-align: center; font-size: 13px; color: var(--text2); font-family: var(--mono); }
+
+.footer { text-align: center; padding: 16px 20px; font-size: 11px; color: var(--text3); font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<!-- ════════════ LOGIN ════════════ -->
+<div class="screen" id="loginScreen">
+  <div class="brand">
+    <div class="brand-ring">⌚</div>
+    <h1>Training Advisor</h1>
+    <p>KI-Analyse deiner Garmin-Daten</p>
+  </div>
+
+  <div class="login-box">
+    <label class="flabel">Server URL (Railway)</label>
+    <input id="serverUrl" class="finput" type="url" placeholder="https://xxx.railway.app" autocapitalize="none" autocorrect="off">
+
+    <label class="flabel">Garmin E-Mail</label>
+    <input id="emailInput" class="finput" type="email" placeholder="name@beispiel.de" autocomplete="email">
+
+    <label class="flabel">Passwort</label>
+    <input id="passwordInput" class="finput" type="password" placeholder="••••••••" autocomplete="current-password">
+
+    <button class="btn-blue" id="loginBtn" onclick="handleLogin()">Verbinden & Daten laden</button>
+
+    <div class="divider"><div class="divider-line"></div><span class="divider-text">oder</span><div class="divider-line"></div></div>
+
+    <button class="btn-ghost" onclick="loadDemo()">Demo-Modus starten</button>
+
+    <div class="login-notice">🔒 Daten gehen nur an deinen eigenen Railway-Server</div>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ════════════ DASHBOARD ════════════ -->
+<div class="screen hidden" id="dashScreen">
+
+  <div id="installBanner" class="install-banner">
+    <span>📲 Zum Homescreen: Teilen → „Zum Home-Bildschirm"</span>
+    <button onclick="this.parentElement.style.display='none'">✕</button>
+  </div>
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>Training Advisor</h1>
+      <p id="dateLabel"></p>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">↩</button>
+  </div>
+
+  <div class="sync-pill" id="syncPill">
+    <div class="sdot green" id="syncDot"></div>
+    <span id="syncLabel">Verbunden</span>
+    <span class="sync-time" id="syncTime"></span>
+    <button class="sync-refresh" onclick="refreshData()">↻</button>
+  </div>
+
+  <!-- Hero Cards -->
+  <div class="grid2">
+    <div class="hcard c-blue">
+      <div class="clabel">Schlaf heute</div>
+      <div class="ring-wrap">
+        <svg width="70" height="70" id="sleepRing"></svg>
+        <div class="ring-val"><span class="ring-num" id="sleepScore">--</span><span class="ring-unit">/ 100</span></div>
+      </div>
+      <div class="csub" id="sleepDur">-- h</div>
+    </div>
+    <div class="hcard c-green">
+      <div class="clabel">Erholung</div>
+      <div class="ring-wrap">
+        <svg width="70" height="70" id="recovRing"></svg>
+        <div class="ring-val"><span class="ring-num" id="recovLabel" style="font-size:13px;letter-spacing:0">--</span></div>
+      </div>
+      <div class="csub" id="hrvToday">HRV -- ms</div>
+    </div>
+    <div class="hcard c-cyan">
+      <div class="clabel">HRV Ø 7 Tage</div>
+      <div class="big-num" id="avgHrv" style="color:var(--cyan)">--</div>
+      <div class="big-unit">ms</div>
+      <div class="csub" id="hrvTrend"></div>
+    </div>
+    <div class="hcard c-orange">
+      <div class="clabel">Wochenload</div>
+      <div class="big-num" id="weekLoad" style="color:var(--orange)">--</div>
+      <div class="big-unit">ATL</div>
+      <div class="csub" id="loadStatus"></div>
+    </div>
+  </div>
+
+  <!-- Sleep Chart -->
+  <div class="wcard">
+    <div class="wcard-hdr">
+      <span class="wcard-title">Schlafverlauf</span>
+      <div style="display:flex;gap:10px;font-size:11px;color:var(--text2);font-family:var(--mono)">
+        <span><span style="color:var(--blue)">▮</span> Tief</span>
+        <span><span style="color:rgba(10,132,255,0.45)">▮</span> REM</span>
+      </div>
+    </div>
+    <div class="sleep-row" id="sleepChart"></div>
+  </div>
+
+  <!-- HRV Sparkline -->
+  <div class="wcard">
+    <div class="wcard-hdr">
+      <span class="wcard-title">HRV-Verlauf</span>
+      <span class="wcard-meta" id="hrvRange"></span>
+    </div>
+    <div class="spark-wrap"><svg class="spark" id="sparkline"></svg></div>
+  </div>
+
+  <!-- Training -->
+  <div class="wcard">
+    <div class="wcard-hdr">
+      <span class="wcard-title">Trainingsbelastung</span>
+      <span class="wcard-meta" id="totalCals"></span>
+    </div>
+    <div class="load-row" id="loadChart"></div>
+    <div class="act-row" id="actRow"></div>
+  </div>
+
+  <!-- AI -->
+  <div class="ai-card">
+    <div class="ai-top">
+      <div class="ai-icon">🤖</div>
+      <div>
+        <div class="ai-name">KI-Trainingscoach</div>
+        <div class="ai-desc">Schlaf · HRV · Training · Empfehlungen</div>
+      </div>
+      <button class="ai-refresh" id="aiRefreshBtn" onclick="runAI()">↻ Neu</button>
+    </div>
+    <div id="aiContent">
+      <button class="analyze-btn" onclick="runAI()">🔍 Jetzt analysieren</button>
+    </div>
+  </div>
+
+  <div class="footer" id="footerTxt">Garmin Training Advisor</div>
+</div>
+
+<script>
+const DAYS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+let appData = { sleep: [], training: [] };
+let isDemo = false;
+let serverUrl = '', savedEmail = '', savedPassword = '';
+
+function dayLabel(ds) {
+  const d = new Date(ds);
+  return DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1];
+}
+
+function saveSession(u, e, p) {
+  try { sessionStorage.setItem('ga_u',u); sessionStorage.setItem('ga_e',e); sessionStorage.setItem('ga_p',p); } catch {}
+}
+function loadSession() {
+  try { return { url: sessionStorage.getItem('ga_u')||'', email: sessionStorage.getItem('ga_e')||'', pw: sessionStorage.getItem('ga_p')||'' }; }
+  catch { return {}; }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dateLabel').textContent =
+    new Date().toLocaleDateString('de-DE', {weekday:'long',day:'numeric',month:'long'});
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone)
+    document.getElementById('installBanner').style.display = 'flex';
+  const s = loadSession();
+  if (s.url) document.getElementById('serverUrl').value = s.url;
+  if (s.email) document.getElementById('emailInput').value = s.email;
+  if (s.url && s.email && s.pw) { serverUrl=s.url; savedEmail=s.email; savedPassword=s.pw; autoLoad(); }
+});
+
+async function autoLoad() {
+  try {
+    const res = await fetch(`${serverUrl}/data`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email:savedEmail, password:savedPassword})
+    });
+    const d = await res.json();
+    if (d.ok) { appData={sleep:d.sleep,training:d.training}; isDemo=false; showDash(); }
+  } catch {}
+}
+
+async function handleLogin() {
+  const url = document.getElementById('serverUrl').value.trim().replace(/\/$/,'');
+  const email = document.getElementById('emailInput').value.trim();
+  const pw = document.getElementById('passwordInput').value;
+  document.getElementById('loginErr').style.display = 'none';
+  if (!url) { showErr('Bitte Railway URL eingeben.'); return; }
+  if (!email || !pw) { showErr('E-Mail und Passwort eingeben.'); return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Verbinde…';
+  try {
+    const h = await fetch(`${url}/health`);
+    if (!h.ok) throw new Error('Server nicht erreichbar');
+    btn.textContent = 'Lade Garmin-Daten…';
+    const res = await fetch(`${url}/data`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email, password:pw})
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error||'Fehler');
+    serverUrl=url; savedEmail=email; savedPassword=pw;
+    saveSession(url,email,pw);
+    appData={sleep:d.sleep,training:d.training}; isDemo=false; showDash();
+  } catch(e) {
+    showErr(e.message.includes('fetch')||e.message.includes('network') ? 'Server nicht erreichbar. Railway URL prüfen.' : `Fehler: ${e.message}`);
+    btn.disabled=false; btn.textContent='Verbinden & Daten laden';
+  }
+}
+
+function showErr(m) { const e=document.getElementById('loginErr'); e.textContent=m; e.style.display='block'; }
+function loadDemo() { appData=demoData(); isDemo=true; showDash(); }
+function doLogout() {
+  try { sessionStorage.clear(); } catch {}
+  document.getElementById('dashScreen').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('aiContent').innerHTML='<button class="analyze-btn" onclick="runAI()">🔍 Jetzt analysieren</button>';
+  document.getElementById('aiRefreshBtn').style.display='none';
+}
+function showDash() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('dashScreen').classList.remove('hidden');
+  render();
+  if (!isDemo) setInterval(refreshData, 30*60*1000);
+}
+async function refreshData() {
+  if (isDemo) { render(); return; }
+  document.getElementById('syncDot').className='sdot orange';
+  document.getElementById('syncLabel').textContent='Aktualisiere…';
+  try {
+    const res = await fetch(`${serverUrl}/data`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email:savedEmail, password:savedPassword})
+    });
+    const d = await res.json();
+    if (d.ok) { appData={sleep:d.sleep,training:d.training}; render(); }
+  } catch {}
+  document.getElementById('syncDot').className='sdot green';
+  document.getElementById('syncLabel').textContent='Verbunden';
+  document.getElementById('syncTime').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+}
+
+function render() {
+  const {sleep, training} = appData;
+  if (!sleep.length) return;
+  const today = sleep[sleep.length-1];
+  const hrvVals = sleep.map(s=>s.hrv).filter(Boolean);
+  const avgHrv = hrvVals.length ? Math.round(hrvVals.reduce((a,b)=>a+b,0)/hrvVals.length) : 0;
+  const totalLoad = training.reduce((a,b)=>a+(b.load||0),0);
+  const totalCals = training.reduce((a,b)=>a+(b.calories||0),0);
+
+  document.getElementById('syncTime').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('syncLabel').textContent=isDemo?'Demo':'Verbunden';
+  document.getElementById('footerTxt').textContent=isDemo?'Demo-Modus · Echte Daten nach Garmin API-Zugang':'Garmin Training Advisor · Echtdaten';
+
+  // Sleep ring
+  const sc = today.score||75;
+  drawRing('sleepRing', sc, '#0a84ff', 70);
+  document.getElementById('sleepScore').textContent=sc;
+  document.getElementById('sleepDur').textContent=`${today.duration}h Schlaf`;
+
+  // Recovery
+  const rec = today.hrv&&avgHrv
+    ? today.hrv>avgHrv*1.05 ? {t:'OPTIMAL',p:92,c:'#30d158'}
+    : today.hrv>avgHrv*0.9  ? {t:'GUT',p:74,c:'#30d158'}
+    : today.hrv>avgHrv*0.75 ? {t:'MODERAT',p:50,c:'#ff9f0a'}
+    : {t:'NIEDRIG',p:24,c:'#ff453a'}
+    : {t:'GUT',p:68,c:'#30d158'};
+  drawRing('recovRing', rec.p, rec.c, 70);
+  const rl=document.getElementById('recovLabel'); rl.textContent=rec.t; rl.style.color=rec.c;
+  document.getElementById('hrvToday').textContent=`HRV ${today.hrv||'--'} ms`;
+
+  document.getElementById('avgHrv').textContent=avgHrv||'--';
+  if (hrvVals.length>=2) {
+    const trend=Math.round(((hrvVals[hrvVals.length-1]-hrvVals[0])/hrvVals[0])*100);
+    document.getElementById('hrvTrend').textContent=trend>=0?`↑ +${trend}% Woche`:`↓ ${trend}% Woche`;
+  }
+  document.getElementById('weekLoad').textContent=totalLoad;
+  document.getElementById('loadStatus').textContent=totalLoad>400?'⚠️ Hoch':totalLoad>200?'✓ Optimal':'↓ Niedrig';
+
+  // Sleep chart
+  const sc2=document.getElementById('sleepChart'); sc2.innerHTML='';
+  const mx=Math.max(...sleep.map(s=>s.duration),1);
+  sleep.forEach(s=>{
+    const col=document.createElement('div'); col.className='sleep-col';
+    const dH=Math.round((s.deepSleep/mx)*80);
+    const rH=Math.round((s.remSleep/mx)*80);
+    const lH=Math.round(((s.duration-s.deepSleep-s.remSleep)/mx)*80);
+    col.innerHTML=`<div class="sleep-stack">
+      <div class="sl" style="height:${Math.max(lH,0)}px;background:rgba(10,132,255,0.15)"></div>
+      <div class="sl" style="height:${Math.max(rH,0)}px;background:rgba(10,132,255,0.45)"></div>
+      <div class="sl" style="height:${Math.max(dH,0)}px;background:#0a84ff"></div>
+    </div><span class="bar-day">${dayLabel(s.date)}</span>`;
+    sc2.appendChild(col);
+  });
+
+  // Sparkline
+  if (hrvVals.length) {
+    drawSpark(sleep.map(s=>s.hrv||0));
+    document.getElementById('hrvRange').textContent=`${Math.min(...hrvVals)} – ${Math.max(...hrvVals)} ms`;
+  }
+
+  // Load chart
+  const lc=document.getElementById('loadChart'); lc.innerHTML='';
+  const ml=Math.max(...training.map(t=>t.load),1);
+  training.forEach(t=>{
+    const col=document.createElement('div'); col.className='load-col';
+    const h=Math.round((t.load/ml)*58);
+    const c=t.load>80?'#ff9f0a':t.load>40?'#5ac8fa':t.load>0?'#30d158':'rgba(255,255,255,0.06)';
+    col.innerHTML=`<div class="load-fill-w"><div class="load-fill" style="height:${Math.max(h,3)}px;background:${c};box-shadow:0 0 8px ${c}66;border-radius:5px 5px 0 0"></div></div><span class="bar-day">${dayLabel(t.date)}</span>`;
+    lc.appendChild(col);
+  });
+
+  // Activity chips
+  const ar=document.getElementById('actRow'); ar.innerHTML='';
+  training.forEach(t=>{
+    const ch=document.createElement('div'); ch.className='act-chip';
+    ch.innerHTML=`<span class="act-emoji">${t.emoji||'⚡'}</span><span class="act-type">${t.type}</span><span class="act-day">${dayLabel(t.date)}</span>`;
+    ar.appendChild(ch);
+  });
+  document.getElementById('totalCals').textContent=`${totalCals.toLocaleString()} kcal`;
+}
+
+function drawRing(id, pct, color, size) {
+  const svg=document.getElementById(id);
+  const s=7, r=(size-s)/2, c=2*Math.PI*r, dash=(pct/100)*c;
+  svg.innerHTML=`
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="${s}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${s}"
+      stroke-dasharray="${dash} ${c}" stroke-linecap="round"
+      transform="rotate(-90 ${size/2} ${size/2})"
+      style="filter:drop-shadow(0 0 5px ${color}bb);transition:stroke-dasharray 1s ease"/>`;
+}
+
+function drawSpark(vals) {
+  const svg=document.getElementById('sparkline');
+  const W=svg.parentElement.clientWidth||280, H=48;
+  const valid=vals.filter(v=>v>0);
+  if (!valid.length) return;
+  const mn=Math.min(...valid)-5, mx=Math.max(...valid)+5;
+  const pts=vals.map((v,i)=>({x:(i/(vals.length-1))*W, y:v>0?H-((v-mn)/(mx-mn))*H:H}));
+  const path=pts.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.innerHTML=`<defs>
+    <linearGradient id="spg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5ac8fa" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#5ac8fa" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="${path} L${W},${H} L0,${H} Z" fill="url(#spg)"/>
+  <path d="${path}" fill="none" stroke="#5ac8fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #5ac8fabb)"/>
+  ${pts.filter((_,i)=>vals[i]>0).map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#5ac8fa" style="filter:drop-shadow(0 0 3px #5ac8fa)"/>`).join('')}`;
+}
+
+async function runAI() {
+  const {sleep, training}=appData;
+  const content=document.getElementById('aiContent');
+  const btn=document.getElementById('aiRefreshBtn');
+  content.innerHTML=`<div class="spinner"></div><p class="spin-label">Analysiere deine Daten…</p>`;
+  btn.style.display='none';
+  try {
+    // KI-Analyse läuft über Railway – kein CORS-Problem
+    const res=await fetch(`${serverUrl}/analyze`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sleep, training})
+    });
+    const d=await res.json();
+    if(!d.ok) throw new Error(d.error||'Analyse fehlgeschlagen');
+    const text=d.text||'Keine Antwort.';
+    content.innerHTML=`<div class="ai-output">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+    btn.style.display='block';
+  } catch(e) {
+    content.innerHTML=`<p style="color:#ff6b60;font-size:13px">Fehler: ${e.message}</p><button class="analyze-btn" style="margin-top:12px" onclick="runAI()">↻ Erneut</button>`;
+  }
+}
+
+function demoData() {
+  return {
+    sleep:[
+      {date:'2026-04-13',duration:7.2,deepSleep:1.4,remSleep:1.8,lightSleep:4.0,score:78,hrv:52},
+      {date:'2026-04-14',duration:5.8,deepSleep:0.9,remSleep:1.2,lightSleep:3.7,score:61,hrv:38},
+      {date:'2026-04-15',duration:8.1,deepSleep:1.9,remSleep:2.1,lightSleep:4.1,score:88,hrv:67},
+      {date:'2026-04-16',duration:6.5,deepSleep:1.1,remSleep:1.5,lightSleep:3.9,score:70,hrv:45},
+      {date:'2026-04-17',duration:7.8,deepSleep:1.7,remSleep:1.9,lightSleep:4.2,score:84,hrv:61},
+      {date:'2026-04-18',duration:6.9,deepSleep:1.3,remSleep:1.6,lightSleep:4.0,score:74,hrv:49},
+      {date:'2026-04-19',duration:7.5,deepSleep:1.6,remSleep:1.8,lightSleep:4.1,score:80,hrv:55},
+    ],
+    training:[
+      {date:'2026-04-13',type:'Laufen',  emoji:'🏃',duration:45,load:72, calories:380},
+      {date:'2026-04-14',type:'Kraft',   emoji:'💪',duration:60,load:85, calories:290},
+      {date:'2026-04-15',type:'Ruhetag', emoji:'😴',duration:0, load:0,  calories:0},
+      {date:'2026-04-16',type:'Radfahren',emoji:'🚴',duration:90,load:110,calories:650},
+      {date:'2026-04-17',type:'Laufen',  emoji:'🏃',duration:30,load:48, calories:240},
+      {date:'2026-04-18',type:'Schwimmen',emoji:'🏊',duration:45,load:65, calories:310},
+      {date:'2026-04-19',type:'Yoga',    emoji:'🧘',duration:40,load:20, calories:120},
+    ]
+  };
+}
+</script>
+</body>
+</html>
