@@ -273,8 +273,38 @@ def debug_activity():
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/health")
 def health():
     return jsonify({"ok": True})
+
+@app.route("/debug-page")
+def debug_page():
+    html = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Debug</title>
+<style>body{background:#000;color:#fff;font-family:monospace;padding:24px}
+input{width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:10px;font-size:14px}
+button{padding:12px 24px;background:#0a84ff;border:none;border-radius:8px;color:#fff;font-size:15px;cursor:pointer}
+pre{background:#111;padding:16px;border-radius:8px;margin-top:16px;overflow-x:auto;font-size:12px;line-height:1.5;white-space:pre-wrap}
+</style></head><body>
+<h2>Garmin Activity Debug</h2>
+<input id="email" type="email" placeholder="Garmin E-Mail">
+<input id="pw" type="password" placeholder="Garmin Passwort">
+<button onclick="run()">Letzte Radeinheit analysieren</button>
+<pre id="out">Ergebnis erscheint hier...</pre>
+<script>
+async function run(){
+  document.getElementById('out').textContent='Lade... (kann 20-30s dauern)';
+  try{
+    const res=await fetch('/debug-activity',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('pw').value})});
+    const d=await res.json();
+    document.getElementById('out').textContent=JSON.stringify(d,null,2);
+  }catch(e){document.getElementById('out').textContent='Fehler: '+e.message;}
+}
+</script></body></html>"""
+    return Response(html, mimetype='text/html')
 
 @app.route("/data", methods=["POST"])
 def data():
