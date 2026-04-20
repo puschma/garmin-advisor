@@ -213,6 +213,42 @@ def sync_activities(client, days=30):
     print(f"✅ {saved} neue Aktivitäten gespeichert")
     return saved
 
+def fetch_hrv_for_date(client, d):
+    """Holt HRV für ein Datum — probiert mehrere Methoden."""
+    # Methode 1: get_hrv_data
+    try:
+        hrv_data = client.get_hrv_data(d)
+        if hrv_data:
+            val = (hrv_data.get("hrvSummary", {}).get("lastNight")
+                or hrv_data.get("hrvSummary", {}).get("lastNightAvg")
+                or hrv_data.get("lastNight")
+                or hrv_data.get("lastNightAvg")
+                or hrv_data.get("weeklyAvg"))
+            if val and float(val) > 0:
+                print(f"HRV {d} via get_hrv_data: {val}")
+                return round(float(val))
+    except Exception as e:
+        print(f"HRV method1 {d}: {e}")
+
+    # Methode 2: aus Schlaf-hrvSummary
+    try:
+        sleep = client.get_sleep_data(d)
+        hrv_s = sleep.get("hrvSummary", {})
+        print(f"HRV fields {d}: {hrv_s}")
+        val = (hrv_s.get("lastNight")
+            or hrv_s.get("lastNightAvg")
+            or hrv_s.get("lastNight5MinHigh"))
+        if val and float(val) > 0:
+            return round(float(val))
+        # weeklyAvg als letzter Ausweg
+        val = hrv_s.get("weeklyAvg")
+        if val and float(val) > 0:
+            return round(float(val))
+    except Exception as e:
+        print(f"HRV method2 {d}: {e}")
+
+    return None
+
 def sync_health(client, days=30):
     """Holt Schlaf/HRV und speichert in DB."""
     today = date.today()
@@ -221,9 +257,6 @@ def sync_health(client, days=30):
         with conn.cursor() as cur:
             for i in range(days):
                 d = (today - timedelta(days=i)).isoformat()
-                cur.execute("SELECT date FROM health_data WHERE date=%s", (d,))
-                if cur.fetchone():
-                    continue
                 try:
                     raw = client.get_sleep_data(d)
                     dto = raw.get("dailySleepDTO", {})
@@ -232,7 +265,20 @@ def sync_health(client, days=30):
                     score = None
                     if isinstance(scores.get("overall"), dict):
                         score = scores["overall"].get("value")
-                    hrv = hrv_s.get("lastNight") or hrv_s.get("lastNightAvg") or hrv_s.get("weeklyAvg")
+                    elif scores.get("totalScore"):
+                        score = scores["totalScore"]
+
+                    # HRV: alle möglichen Felder probieren
+                    hrv = (hrv_s.get("lastNight")
+                        or hrv_s.get("lastNightAvg")
+                        or hrv_s.get("lastNight5MinHigh"))
+
+                    # Falls kein HRV aus Schlaf → separater Endpoint
+                    if not hrv or float(hrv) <= 0:
+                        hrv = fetch_hrv_for_date(client, d)
+                    else:
+                        hrv = round(float(hrv))
+
                     dur = to_hours(dto.get("sleepTimeSeconds"))
                     if dur > 0:
                         cur.execute("""
@@ -240,17 +286,21 @@ def sync_health(client, days=30):
                             (date, sleep_duration, deep_sleep, rem_sleep, sleep_score, hrv, resting_hr)
                             VALUES (%s,%s,%s,%s,%s,%s,%s)
                             ON CONFLICT (date) DO UPDATE SET
-                            sleep_duration=EXCLUDED.sleep_duration, hrv=EXCLUDED.hrv,
-                            sleep_score=EXCLUDED.sleep_score
+                            sleep_duration=EXCLUDED.sleep_duration,
+                            hrv=COALESCE(EXCLUDED.hrv, health_data.hrv),
+                            sleep_score=COALESCE(EXCLUDED.sleep_score, health_data.sleep_score),
+                            deep_sleep=EXCLUDED.deep_sleep,
+                            rem_sleep=EXCLUDED.rem_sleep,
+                            resting_hr=COALESCE(EXCLUDED.resting_hr, health_data.resting_hr)
                         """, (d, dur, to_hours(dto.get("deepSleepSeconds")),
                               to_hours(dto.get("remSleepSeconds")), score,
-                              round(float(hrv)) if hrv else None,
-                              dto.get("restingHeartRate")))
+                              hrv, dto.get("restingHeartRate")))
                         saved += 1
+                        print(f"Health {d}: dur={dur}h score={score} hrv={hrv}")
                 except Exception as e:
                     print(f"Health {d}: {e}")
         conn.commit()
-    print(f"✅ {saved} neue Gesundheitsdaten gespeichert")
+    print(f"✅ {saved} Gesundheitsdaten gespeichert/aktualisiert")
     return saved
 
 # ══════════════════════════════════════════════
