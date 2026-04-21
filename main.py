@@ -351,28 +351,34 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         role = "Du" if m["role"] == "user" else "Coach"
         history_text += f"\n{role}: {m['content']}"
 
-    return f"""Du bist ein erfahrener Radsport-Coach. Dein Stil: direkt, ehrlich, datenbasiert — aber du glaubst an den Athleten und willst dass er sein Ziel erreicht. Kein leeres Lob, aber auch kein unnötiges Runtermachen. Du sagst was ist, warum es so ist, und was konkret zu tun ist. Kurze präzise Antworten — kein Blabla.
+    return f"""Du bist ein erfahrener Radsport-Coach. Stil: direkt, ehrlich, datenbasiert, motivierend.
+WICHTIG: Du hast ALLE Trainingsdaten des Athleten unten. Du brauchst KEINE weiteren Daten anzufragen — analysiere direkt was du hast.
+
+HEUTE: {date.today().strftime('%A, %d.%m.%Y')} (Wochentag beachten!)
 
 ATHLETEN-PROFIL:
 - FTP: {ftp}W | Gewicht: {weight}kg | Aktuell: {wpkg} W/kg
 - Ziel: {goal_wpkg} W/kg = {goal_ftp}W FTP (noch +{goal_ftp - ftp}W)
 - Trainingstage/Woche: {profile.get('days', 4)}
-- Fitness-Level: {profile.get('level', 'Mittel')}
 
-TRAININGS-ZONEN (basierend auf FTP {ftp}W):
+TRAININGS-ZONEN (FTP {ftp}W):
 Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.90)}W
 Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 {round(ftp*1.06)}-{round(ftp*1.20)}W | Z6+ >{round(ftp*1.21)}W
 
-LETZTE AKTIVITÄTEN:
-{acts_text}
+LETZTE AKTIVITÄTEN (neueste zuerst):
+{acts_text if acts_text else "Keine Aktivitäten gefunden — Sync durchführen."}
 
 GESUNDHEITSDATEN (letzte 7 Tage):
-{health_text}
+{health_text if health_text else "Keine Gesundheitsdaten — Sync durchführen."}
 
-BISHERIGER CHAT:
-{history_text}
+BISHERIGER CHAT (nur zur Orientierung):
+{history_text if history_text else "Neues Gespräch."}
 
-Antworte präzise, datenbasiert und auf Deutsch. Wenn du Trainingseinheiten empfiehlst, nenne immer konkrete Wattbereiche basierend auf der FTP des Athleten."""
+Regeln:
+- Frag NIEMALS nach Daten die du bereits oben hast
+- Beziehe dich immer auf konkrete Zahlen aus den Daten
+- Nenne immer konkrete Wattbereiche bei Empfehlungen
+- Antworte auf Deutsch, präzise und ohne Fülltext"""
 
 # ══════════════════════════════════════════════
 # ROUTES
@@ -567,6 +573,17 @@ def chat():
             conn.commit()
 
         return jsonify({"ok": True, "reply": reply})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/clear-chat", methods=["POST"])
+def clear_chat():
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM chat_messages")
+            conn.commit()
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
