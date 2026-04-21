@@ -328,7 +328,7 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         return f"{pct}% FTP → {zone}"
 
     acts_text = ""
-    for a in recent_activities[:10]:
+    for i, a in enumerate(recent_activities[:10]):
         laps = a.get("laps") or []
         if isinstance(laps, str):
             try: laps = json.loads(laps)
@@ -337,8 +337,9 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         for l in laps:
             if l.get("avg_power"):
                 lap_text += f"\n      Lap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)})"
+        marker = " ← NEUESTES TRAINING" if i == 0 else ""
         acts_text += f"""
-• {a['date']} – {a['name']}
+• {a['date']} – {a['name']}{marker}
   Dauer: {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a['norm_power'] or '?'}W | Ø HR: {a['avg_hr'] or '?'}bpm
   Aerob TE: {a['aerobic_te'] or '?'} | Anaerob TE: {a['anaerobic_te'] or '?'}{lap_text}"""
 
@@ -506,7 +507,7 @@ def chat():
                     SELECT id, date::text, name, duration_min, avg_power, norm_power,
                            avg_hr, aerobic_te, anaerobic_te, laps, power_zones, hr_zones,
                            training_load
-                    FROM activities ORDER BY date DESC LIMIT 15
+                    FROM activities ORDER BY date DESC, created_at DESC LIMIT 15
                 """)
                 activities = [dict(r) for r in cur.fetchall()]
                 for a in activities:
