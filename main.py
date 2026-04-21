@@ -766,6 +766,81 @@ def get_plan():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/download-zwo-get", methods=["GET"])
+def download_zwo_get():
+    """GET-Version des ZWO Downloads — funktioniert direkt im Browser."""
+    workout_date = request.args.get("date")
+    ftp = int(request.args.get("ftp", 210))
+
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT plan FROM training_plan ORDER BY generated_at DESC LIMIT 1")
+                row = cur.fetchone()
+
+        if not row:
+            return "Kein Plan gefunden", 404
+
+        plan = row["plan"] if isinstance(row["plan"], dict) else json.loads(row["plan"])
+
+        workout = None
+        for week in plan.get("weeks", []):
+            for day in week.get("days", []):
+                if day.get("date") == workout_date:
+                    workout = day
+                    break
+
+        if not workout or workout.get("rest"):
+            return "Kein Training für dieses Datum", 404
+
+        intervals = workout.get("intervals", [])
+        if not intervals:
+            return "Keine Intervall-Daten — Plan neu generieren", 404
+
+        title = workout.get("title", "Workout").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        desc = workout.get("description", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        xml_parts = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<workout_file>',
+            f'  <author>Cycling Coach AI</author>',
+            f'  <n>{title}</n>',
+            f'  <description>{desc}</description>',
+            f'  <sportType>bike</sportType>',
+            f'  <tags><tag name="AI Coach"/></tags>',
+            '  <workout>',
+        ]
+
+        for iv in intervals:
+            iv_type = iv.get("type", "work")
+            dur = iv.get("duration_sec", 300)
+            label = iv.get("label", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            if iv_type == "warmup":
+                p_low = round(iv.get("power_low", ftp * 0.45) / ftp, 3)
+                p_high = round(iv.get("power_high", ftp * 0.65) / ftp, 3)
+                xml_parts.append(f'    <Warmup Duration="{dur}" PowerLow="{p_low}" PowerHigh="{p_high}"><textevent timeoffset="0" message="{label}"/></Warmup>')
+            elif iv_type == "cooldown":
+                p_low = round(iv.get("power_low", ftp * 0.40) / ftp, 3)
+                p_high = round(iv.get("power_high", ftp * 0.55) / ftp, 3)
+                xml_parts.append(f'    <Cooldown Duration="{dur}" PowerLow="{min(p_low,p_high)}" PowerHigh="{max(p_low,p_high)}"><textevent timeoffset="0" message="{label}"/></Cooldown>')
+            else:
+                power = round(iv.get("power", ftp * 0.75) / ftp, 3)
+                xml_parts.append(f'    <SteadyState Duration="{dur}" Power="{power}"><textevent timeoffset="0" message="{label}"/></SteadyState>')
+
+        xml_parts += ['  </workout>', '</workout_file>']
+        zwo_content = "\n".join(xml_parts)
+        filename = f"{workout_date}_{title.replace(' ', '_')[:30]}.zwo"
+
+        return Response(
+            zwo_content,
+            mimetype="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
 @app.route("/download-zwo", methods=["POST"])
 def download_zwo():
     """Generiert eine .zwo Zwift Workout Datei für eine Trainingseinheit."""
