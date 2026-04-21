@@ -939,22 +939,15 @@ function closePlanDaySheet(){document.getElementById('planDaySheet').classList.a
 
 async function downloadZwo(date){
   const ftp=profile.ftp||210;
-  try{
-    const res=await fetch(`${serverUrl}/download-zwo`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,ftp})
-    });
-    if(!res.ok){const e=await res.json();alert('Fehler: '+e.error);return;}
-    const blob=await res.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    const cd=res.headers.get('Content-Disposition')||'';
-    const fn=cd.match(/filename="(.+)"/)?.[1]||`workout_${date}.zwo`;
-    a.download=fn;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }catch(e){alert('Download-Fehler: '+e.message);}
+  // Direkter POST über ein verstecktes Form — kein CORS/Blob Problem
+  const form=document.createElement('form');
+  form.method='POST';
+  form.action=`${serverUrl}/download-zwo`;
+  form.style.display='none';
+  const addField=(name,val)=>{const i=document.createElement('input');i.type='hidden';i.name=name;i.value=val;form.appendChild(i);};
+  // Wir schicken die Daten als JSON über ein Textarea-Trick nicht möglich mit form
+  // Stattdessen: GET endpoint mit date als query param
+  window.location.href=`${serverUrl}/download-zwo-get?date=${date}&ftp=${ftp}`;
 }
 
 function askQuick(t){document.getElementById('chatInput').value=t;sendMsg();}
