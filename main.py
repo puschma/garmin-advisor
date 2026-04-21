@@ -651,7 +651,8 @@ ZUSÄTZLICHE HINWEISE: {notes if notes else "keine"}
 Trainings-Zonen (FTP {ftp}W):
 Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.9)}W | Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 >{round(ftp*1.06)}W
 
-Erstelle den Plan als JSON in diesem Format:
+Erstelle den Plan als JSON. Jede Trainingseinheit braucht ein "intervals" Array mit genauen Segmenten für Zwift:
+
 {{
   "goal": "Kurze Beschreibung des Planziels",
   "weeks": [
@@ -669,7 +670,14 @@ Erstelle den Plan als JSON in diesem Format:
           "description": "Aufwärmen 15min, 2x20min @ {round(ftp*0.88)}-{round(ftp*0.93)}W (Z3/SST), 10min Cool-down",
           "target_power": "{round(ftp*0.88)}-{round(ftp*0.93)}W",
           "intensity": "mittel",
-          "rest": false
+          "rest": false,
+          "intervals": [
+            {{"type": "warmup", "duration_sec": 900, "power_low": {round(ftp*0.45)}, "power_high": {round(ftp*0.65)}, "label": "Aufwärmen"}},
+            {{"type": "work", "duration_sec": 1200, "power": {round(ftp*0.90)}, "label": "SST Block 1"}},
+            {{"type": "rest", "duration_sec": 300, "power": {round(ftp*0.50)}, "label": "Erholung"}},
+            {{"type": "work", "duration_sec": 1200, "power": {round(ftp*0.90)}, "label": "SST Block 2"}},
+            {{"type": "cooldown", "duration_sec": 600, "power_low": {round(ftp*0.55)}, "power_high": {round(ftp*0.40)}, "label": "Cool-down"}}
+          ]
         }},
         {{
           "date": "YYYY-MM-DD",
@@ -680,16 +688,17 @@ Erstelle den Plan als JSON in diesem Format:
           "description": "Aktive Erholung oder komplett frei",
           "target_power": null,
           "intensity": "keine",
-          "rest": true
+          "rest": true,
+          "intervals": []
         }}
       ]
     }}
   ]
 }}
 
-Plane nur die angegebenen Trainingstage als Trainings, alle anderen als Ruhetage.
-Starte mit dem Datum {start_date} für Woche 1.
-Variiere die Einheiten sinnvoll: Z2 Grundlage, SST, Schwellenintervalle, VO2max — je nach Woche und Periodisierung.
+Intervall-Typen: warmup (power_low+power_high), work (power), rest (power), cooldown (power_low+power_high)
+Alle Power-Werte als absolute Watt (nicht Prozent).
+Variiere die Einheiten: Z2 Grundlage, SST, Schwellenintervalle, VO2max.
 Antworte NUR mit dem JSON, kein Text davor oder danach."""
 
         res = req.post(
@@ -732,6 +741,91 @@ def get_plan():
             return jsonify({"ok": True, "plan": None})
         plan = row["plan"] if isinstance(row["plan"], dict) else json.loads(row["plan"])
         return jsonify({"ok": True, "plan": plan, "generated_at": row["generated_at"]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/download-zwo", methods=["POST"])
+def download_zwo():
+    """Generiert eine .zwo Zwift Workout Datei für eine Trainingseinheit."""
+    body = request.get_json() or {}
+    workout_date = body.get("date")
+    ftp = body.get("ftp", 210)
+
+    try:
+        # Plan holen
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT plan FROM training_plan ORDER BY generated_at DESC LIMIT 1")
+                row = cur.fetchone()
+
+        if not row:
+            return jsonify({"ok": False, "error": "Kein Plan gefunden"}), 404
+
+        plan = row["plan"] if isinstance(row["plan"], dict) else json.loads(row["plan"])
+
+        # Workout für dieses Datum finden
+        workout = None
+        for week in plan.get("weeks", []):
+            for day in week.get("days", []):
+                if day.get("date") == workout_date:
+                    workout = day
+                    break
+
+        if not workout or workout.get("rest"):
+            return jsonify({"ok": False, "error": "Kein Training für dieses Datum"}), 404
+
+        intervals = workout.get("intervals", [])
+        if not intervals:
+            return jsonify({"ok": False, "error": "Keine Intervall-Daten vorhanden — Plan neu generieren"}), 404
+
+        # ZWO XML generieren
+        title = workout.get("title", "Cycling Workout").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        desc = workout.get("description", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        xml_parts = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            f'<workout_file>',
+            f'  <author>Cycling Coach AI</author>',
+            f'  <name>{title}</name>',
+            f'  <description>{desc}</description>',
+            f'  <sportType>bike</sportType>',
+            f'  <tags><tag name="AI Coach"/></tags>',
+            f'  <workout>',
+        ]
+
+        for iv in intervals:
+            iv_type = iv.get("type", "work")
+            dur = iv.get("duration_sec", 300)
+            label = iv.get("label", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            if iv_type == "warmup":
+                p_low = round(iv.get("power_low", ftp * 0.45) / ftp, 3)
+                p_high = round(iv.get("power_high", ftp * 0.65) / ftp, 3)
+                xml_parts.append(f'    <Warmup Duration="{dur}" PowerLow="{p_low}" PowerHigh="{p_high}"><textevent timeoffset="0" message="{label}"/></Warmup>')
+
+            elif iv_type == "cooldown":
+                p_low = round(iv.get("power_low", ftp * 0.55) / ftp, 3)
+                p_high = round(iv.get("power_high", ftp * 0.40) / ftp, 3)
+                # ZWO cooldown goes from high to low
+                xml_parts.append(f'    <Cooldown Duration="{dur}" PowerLow="{min(p_low,p_high)}" PowerHigh="{max(p_low,p_high)}"><textevent timeoffset="0" message="{label}"/></Cooldown>')
+
+            elif iv_type in ("work", "rest"):
+                power = round(iv.get("power", ftp * 0.75) / ftp, 3)
+                xml_parts.append(f'    <SteadyState Duration="{dur}" Power="{power}"><textevent timeoffset="0" message="{label}"/></SteadyState>')
+
+        xml_parts += ['  </workout>', '</workout_file>']
+        zwo_content = "\n".join(xml_parts)
+
+        filename = f"{workout_date}_{title.replace(' ', '_')[:30]}.zwo"
+        return Response(
+            zwo_content,
+            mimetype="application/xml",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/xml"
+            }
+        )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
