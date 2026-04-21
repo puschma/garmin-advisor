@@ -77,6 +77,14 @@ def init_db():
                     data JSONB,
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
+
+                CREATE TABLE IF NOT EXISTS training_plan (
+                    id SERIAL PRIMARY KEY,
+                    week_start DATE NOT NULL,
+                    plan JSONB NOT NULL,
+                    generated_at TIMESTAMPTZ DEFAULT NOW(),
+                    notes TEXT
+                );
             """)
         conn.commit()
     print("✅ DB initialisiert")
@@ -588,6 +596,202 @@ def chat():
         return jsonify({"ok": True, "reply": reply})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/generate-plan", methods=["POST"])
+def generate_plan():
+    body = request.get_json() or {}
+    start_date = body.get("start_date")  # ISO date string
+    weeks = body.get("weeks", 4)
+    training_days = body.get("training_days", [])  # e.g. ["Mon","Wed","Fri"]
+    notes = body.get("notes", "")
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"ok": False, "error": "ANTHROPIC_API_KEY fehlt"}), 500
+
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT data FROM profile WHERE id=1")
+                row = cur.fetchone()
+                profile_data = row["data"] if row else {}
+                cur.execute("SELECT id, date::text, name, duration_min, avg_power, norm_power, laps FROM activities ORDER BY date DESC LIMIT 20")
+                activities = [dict(r) for r in cur.fetchall()]
+                cur.execute("SELECT date::text, sleep_score, hrv FROM health_data ORDER BY date DESC LIMIT 14")
+                health = [dict(r) for r in cur.fetchall()]
+
+        ftp = profile_data.get("ftp", 210)
+        weight = profile_data.get("weight", 63)
+        goal_wpkg = profile_data.get("goal_wpkg", 4.0)
+        goal_ftp = round(goal_wpkg * weight)
+        days_per_week = len(training_days) if training_days else profile_data.get("days", 4)
+
+        day_names = {"Mon":"Montag","Tue":"Dienstag","Wed":"Mittwoch","Thu":"Donnerstag","Fri":"Freitag","Sat":"Samstag","Sun":"Sonntag"}
+        days_text = ", ".join([day_names.get(d,d) for d in training_days]) if training_days else f"{days_per_week} Tage/Woche"
+
+        acts_text = "\n".join([f"• {a['date']}: {a['name']} {a['duration_min']}min @ {a['avg_power'] or '?'}W" for a in activities[:10]])
+        health_text = "\n".join([f"• {h['date']}: Score {h['sleep_score'] or '?'} HRV {h['hrv'] or '?'}ms" for h in health[:7]])
+
+        prompt = f"""Erstelle einen {weeks}-Wochen Trainingsplan für einen Radsportler. Antworte NUR mit einem JSON-Objekt, kein anderer Text.
+
+PROFIL:
+- FTP: {ftp}W | Gewicht: {weight}kg | Aktuell: {ftp/weight:.2f} W/kg
+- Ziel: {goal_wpkg} W/kg = {goal_ftp}W FTP (noch +{goal_ftp-ftp}W)
+- Trainingstage: {days_text}
+- Planstart: {start_date}
+
+LETZTE TRAININGS:
+{acts_text}
+
+GESUNDHEIT (letzte Woche):
+{health_text}
+
+ZUSÄTZLICHE HINWEISE: {notes if notes else "keine"}
+
+Trainings-Zonen (FTP {ftp}W):
+Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.9)}W | Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 >{round(ftp*1.06)}W
+
+Erstelle den Plan als JSON in diesem Format:
+{{
+  "goal": "Kurze Beschreibung des Planziels",
+  "weeks": [
+    {{
+      "week": 1,
+      "start": "YYYY-MM-DD",
+      "focus": "Grundlage aufbauen",
+      "days": [
+        {{
+          "date": "YYYY-MM-DD",
+          "day": "Montag",
+          "type": "SST",
+          "title": "Sweet Spot 2x20",
+          "duration_min": 75,
+          "description": "Aufwärmen 15min, 2x20min @ {round(ftp*0.88)}-{round(ftp*0.93)}W (Z3/SST), 10min Cool-down",
+          "target_power": "{round(ftp*0.88)}-{round(ftp*0.93)}W",
+          "intensity": "mittel",
+          "rest": false
+        }},
+        {{
+          "date": "YYYY-MM-DD",
+          "day": "Dienstag",
+          "type": "rest",
+          "title": "Ruhetag",
+          "duration_min": 0,
+          "description": "Aktive Erholung oder komplett frei",
+          "target_power": null,
+          "intensity": "keine",
+          "rest": true
+        }}
+      ]
+    }}
+  ]
+}}
+
+Plane nur die angegebenen Trainingstage als Trainings, alle anderen als Ruhetage.
+Starte mit dem Datum {start_date} für Woche 1.
+Variiere die Einheiten sinnvoll: Z2 Grundlage, SST, Schwellenintervalle, VO2max — je nach Woche und Periodisierung.
+Antworte NUR mit dem JSON, kein Text davor oder danach."""
+
+        res = req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]},
+            timeout=60
+        )
+        data = res.json()
+        text = "".join(b.get("text", "") for b in data.get("content", []))
+
+        # Parse JSON
+        text_clean = text.strip()
+        if text_clean.startswith("```"):
+            text_clean = text_clean.split("\n", 1)[1].rsplit("```", 1)[0]
+        plan_data = json.loads(text_clean)
+
+        # Speichern
+        start = date.fromisoformat(start_date)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM training_plan WHERE week_start >= %s", (start,))
+                cur.execute("INSERT INTO training_plan (week_start, plan, notes) VALUES (%s, %s, %s)",
+                           (start, json.dumps(plan_data), notes))
+            conn.commit()
+
+        return jsonify({"ok": True, "plan": plan_data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/get-plan", methods=["GET"])
+def get_plan():
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT plan, generated_at::text, notes FROM training_plan ORDER BY generated_at DESC LIMIT 1")
+                row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": True, "plan": None})
+        plan = row["plan"] if isinstance(row["plan"], dict) else json.loads(row["plan"])
+        return jsonify({"ok": True, "plan": plan, "generated_at": row["generated_at"]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/adapt-plan", methods=["POST"])
+def adapt_plan():
+    """Coach passt den Plan basierend auf einer Nachricht an."""
+    body = request.get_json() or {}
+    message = body.get("message", "")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT plan FROM training_plan ORDER BY generated_at DESC LIMIT 1")
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"ok": False, "error": "Kein Plan vorhanden"}), 404
+                cur.execute("SELECT data FROM profile WHERE id=1")
+                prof_row = cur.fetchone()
+                profile_data = prof_row["data"] if prof_row else {}
+
+        plan = row["plan"] if isinstance(row["plan"], dict) else json.loads(row["plan"])
+        ftp = profile_data.get("ftp", 210)
+
+        prompt = f"""Du bist ein Radsport-Coach. Passe den folgenden Trainingsplan basierend auf der Anfrage des Athleten an.
+Antworte mit einem JSON-Objekt im gleichen Format wie der bestehende Plan.
+
+ANFRAGE: {message}
+
+BESTEHENDER PLAN:
+{json.dumps(plan, ensure_ascii=False, indent=2)[:3000]}
+
+FTP: {ftp}W
+
+Passe nur die nötigen Tage an. Antworte NUR mit dem aktualisierten JSON."""
+
+        res = req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]},
+            timeout=60
+        )
+        data = res.json()
+        text = "".join(b.get("text", "") for b in data.get("content", []))
+        text_clean = text.strip()
+        if text_clean.startswith("```"):
+            text_clean = text_clean.split("\n", 1)[1].rsplit("```", 1)[0]
+        updated_plan = json.loads(text_clean)
+
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE training_plan SET plan=%s, notes=%s WHERE id=(SELECT id FROM training_plan ORDER BY generated_at DESC LIMIT 1)",
+                           (json.dumps(updated_plan), f"Angepasst: {message}"))
+            conn.commit()
+
+        return jsonify({"ok": True, "plan": updated_plan})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @app.route("/clear-chat", methods=["POST"])
 def clear_chat():
