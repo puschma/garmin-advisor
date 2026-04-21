@@ -542,8 +542,20 @@ def chat():
         # Context aufbauen
         context = build_context(profile_data, activities, health, history)
 
-        # Claude aufrufen
-        messages = [{"role": "user", "content": context + f"\n\nAthlet: {message}"}]
+        # Claude aufrufen — mit oder ohne Bild
+        image_data = body.get("image_data")
+        image_type = body.get("image_type", "image/jpeg")
+
+        if image_data:
+            # Mit Bild
+            user_content = [
+                {"type": "image", "source": {"type": "base64", "media_type": image_type, "data": image_data}},
+                {"type": "text", "text": context + f"\n\nAthlet: {message}"}
+            ]
+        else:
+            user_content = context + f"\n\nAthlet: {message}"
+
+        messages = [{"role": "user", "content": user_content}]
 
         res = req.post(
             "https://api.anthropic.com/v1/messages",
