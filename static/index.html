@@ -203,6 +203,24 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .no-plan h3{font-size:20px;font-weight:700;margin-bottom:8px}
 .no-plan p{font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:24px}
 
+/* Plan day detail sheet */
+.sheet-overlay{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center}
+.sheet-overlay.hidden{display:none}
+.sheet{width:100%;max-width:480px;background:var(--card);border-radius:24px 24px 0 0;padding:20px 20px calc(var(--sb) + 24px);max-height:88vh;overflow-y:auto}
+.sheet-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px}
+.sheet-title{font-size:20px;font-weight:800;letter-spacing:-0.3px;margin-bottom:4px}
+.sheet-type{font-size:13px;font-family:var(--mono);margin-bottom:16px}
+.sheet-desc{font-size:15px;color:var(--text2);line-height:1.65;margin-bottom:20px}
+.iv-block{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:14px}
+.iv-bar{width:5px;border-radius:3px;flex-shrink:0;align-self:stretch;min-height:40px}
+.iv-label{font-size:14px;font-weight:600;margin-bottom:3px}
+.iv-detail{font-size:12px;color:var(--text2);font-family:var(--mono)}
+.sheet-actions{display:flex;gap:10px;margin-top:20px}
+.sheet-btn{flex:1;padding:14px;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}
+.sheet-btn.primary{background:var(--blue);color:#fff}
+.sheet-btn.zwo{background:linear-gradient(135deg,#e07832,#f5a623);color:#fff}
+.sheet-btn.secondary{background:var(--card2);border:1px solid var(--border);color:var(--text2)}
+
 /* ── DETAIL ── */
 #detailScreen{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
 #detailScreen.open{transform:translateX(0)}
@@ -363,6 +381,14 @@ Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
   </div>
 </div>
 
+<!-- PLAN DAY SHEET -->
+<div class="sheet-overlay hidden" id="planDaySheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div id="sheetContent"></div>
+  </div>
+</div>
+
 <!-- DETAIL -->
 <div id="detailScreen">
   <div class="detail-hdr">
@@ -457,6 +483,8 @@ function getNextMonday(){
 
 // ═══ ANDROID BACK ═══
 window.addEventListener('popstate',()=>{
+  const sheet=document.getElementById('planDaySheet');
+  if(!sheet.classList.contains('hidden')){closePlanDaySheet();return;}
   const detail=document.getElementById('detailScreen');
   if(detail.classList.contains('open')){closeDetail();return;}
   const modal=document.getElementById('planModal');
@@ -663,11 +691,13 @@ function renderPlan(){
         const d=new Date(day.date);
         const dayShort=d.toLocaleDateString('de-DE',{weekday:'short'});
         const dayNum=d.getDate();
-        html+=`<div class="plan-day${isToday?' today-day':''}">
+        const click=!day.rest?`onclick="openPlanDay('${day.date}')" style="cursor:pointer"`:'';
+        html+=`<div class="plan-day${isToday?' today-day':''}" ${click}>
           <div class="plan-day-dot" style="background:${dc}"></div>
           <div style="min-width:40px;text-align:center"><div style="font-size:10px;color:var(--text3);font-family:var(--mono)">${dayShort}</div><div style="font-size:13px;font-weight:700">${dayNum}</div></div>
           <div style="flex:1"><div class="plan-day-name">${day.title}</div><div class="plan-day-type">${day.type}</div></div>
           ${day.duration_min>0?`<div class="plan-day-dur">${day.duration_min}min</div>`:''}
+          ${!day.rest?`<div style="color:var(--text3);font-size:18px">›</div>`:''}
         </div>`;
       });
       html+=`</div>`;
@@ -846,6 +876,85 @@ async function sendMsg(){
     else addCoachMsg(`❌ ${d.error}`);
   }catch(e){removeTyping();addCoachMsg(`❌ Verbindungsfehler: ${e.message}`);}
   document.getElementById('sendBtn').disabled=false;
+}
+
+function openPlanDay(date){
+  if(!planData)return;
+  let workout=null;
+  for(const week of planData.weeks||[]){
+    for(const day of week.days||[]){
+      if(day.date===date){workout=day;break;}
+    }
+  }
+  if(!workout||workout.rest)return;
+
+  const ftp=profile.ftp||210;
+  const intColor=workout.intensity==='hoch'?'var(--red)':workout.intensity==='mittel'?'var(--orange)':'var(--green)';
+
+  // Interval type colors
+  function ivColor(type){return type==='warmup'?'#5bc0eb':type==='cooldown'?'#5bc0eb':type==='work'?'#f5a623':'#2ec27e';}
+  function ivLabel(type){return type==='warmup'?'Aufwärmen':type==='cooldown'?'Cool-down':type==='work'?'Hauptintervall':'Erholung';}
+  function fmtDur(sec){const m=Math.floor(sec/60);return m+'min'+(sec%60>0?' '+sec%60+'s':'');}
+
+  const intervals=workout.intervals||[];
+  let ivHtml='';
+  if(intervals.length){
+    intervals.forEach(iv=>{
+      const c=ivColor(iv.type);
+      const dur=fmtDur(iv.duration_sec||0);
+      const power=iv.power?`${iv.power}W (${Math.round(iv.power/ftp*100)}% FTP)`
+        :iv.power_low?`${iv.power_low}W → ${iv.power_high}W`:'';
+      ivHtml+=`<div class="iv-block">
+        <div class="iv-bar" style="background:${c}"></div>
+        <div>
+          <div class="iv-label">${iv.label||ivLabel(iv.type)}</div>
+          <div class="iv-detail">${dur}${power?' · '+power:''}</div>
+        </div>
+      </div>`;
+    });
+  } else {
+    ivHtml=`<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px">Detaillierte Intervalle werden beim nächsten Plan-Generieren hinzugefügt.</div>`;
+  }
+
+  const hasIntervals=intervals.length>0;
+
+  document.getElementById('sheetContent').innerHTML=`
+    <div class="sheet-title">${workout.title}</div>
+    <div class="sheet-type" style="color:${intColor}">${workout.type} · ${workout.duration_min}min · ${workout.intensity} Intensität</div>
+    ${workout.target_power?`<div style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.2);border-radius:100px;font-size:13px;font-weight:600;color:var(--blue);font-family:var(--mono);margin-bottom:16px">⚡ ${workout.target_power}</div><br>`:''}
+    <div class="sheet-desc">${workout.description}</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);margin-bottom:10px">AUFBAU</div>
+    ${ivHtml}
+    <div class="sheet-actions">
+      <button class="sheet-btn secondary" onclick="closePlanDaySheet()">Schliessen</button>
+      <button class="sheet-btn primary" onclick="askQuick('Erkläre mir das Training ${workout.title} im Detail');closePlanDaySheet();switchTab('chat')">Coach fragen</button>
+      ${hasIntervals?`<button class="sheet-btn zwo" onclick="downloadZwo('${date}')">⬇️ .zwo</button>`:''}
+    </div>`;
+
+  document.getElementById('planDaySheet').classList.remove('hidden');
+  pushHistory();
+}
+
+function closePlanDaySheet(){document.getElementById('planDaySheet').classList.add('hidden');}
+
+async function downloadZwo(date){
+  const ftp=profile.ftp||210;
+  try{
+    const res=await fetch(`${serverUrl}/download-zwo`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,ftp})
+    });
+    if(!res.ok){const e=await res.json();alert('Fehler: '+e.error);return;}
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    const cd=res.headers.get('Content-Disposition')||'';
+    const fn=cd.match(/filename="(.+)"/)?.[1]||`workout_${date}.zwo`;
+    a.download=fn;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }catch(e){alert('Download-Fehler: '+e.message);}
 }
 
 function askQuick(t){document.getElementById('chatInput').value=t;sendMsg();}
