@@ -704,17 +704,38 @@ Antworte NUR mit dem JSON, kein Text davor oder danach."""
         res = req.post(
             "https://api.anthropic.com/v1/messages",
             headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
-            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]},
-            timeout=60
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 8000, "messages": [{"role": "user", "content": prompt}]},
+            timeout=90
         )
         data = res.json()
         text = "".join(b.get("text", "") for b in data.get("content", []))
 
-        # Parse JSON
+        # Parse JSON — robust
         text_clean = text.strip()
         if text_clean.startswith("```"):
-            text_clean = text_clean.split("\n", 1)[1].rsplit("```", 1)[0]
-        plan_data = json.loads(text_clean)
+            text_clean = text_clean.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+        # Falls JSON abgeschnitten — versuche zu reparieren
+        try:
+            plan_data = json.loads(text_clean)
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error: {e}")
+            print(f"Raw text length: {len(text_clean)}")
+            # Versuche abgeschnittenes JSON zu reparieren
+            # Finde letztes vollständiges Objekt
+            pos = len(text_clean)
+            for close in [']}]}', ']}', '}}']:
+                idx = text_clean.rfind(close)
+                if idx > 0:
+                    candidate = text_clean[:idx+len(close)]
+                    try:
+                        plan_data = json.loads(candidate)
+                        print(f"JSON repaired at position {idx}")
+                        break
+                    except:
+                        continue
+            else:
+                return jsonify({"ok": False, "error": f"JSON Parse Fehler: {str(e)}\n\nTipp: Weniger Wochen wählen (2 statt 4) oder erneut versuchen."}), 500
 
         # Speichern
         start = date.fromisoformat(start_date)
