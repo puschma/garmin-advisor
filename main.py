@@ -309,7 +309,7 @@ def sync_health(client, days=30):
                             sleep_score=COALESCE(EXCLUDED.sleep_score, health_data.sleep_score),
                             deep_sleep=EXCLUDED.deep_sleep,
                             rem_sleep=EXCLUDED.rem_sleep,
-                            resting_hr=COALESCE(EXCLUDED.resting_hr, health_data.resting_hr)
+                            resting_hr=EXCLUDED.resting_hr
                         """, (d, dur, to_hours(dto.get("deepSleepSeconds")),
                               to_hours(dto.get("remSleepSeconds")), score,
                               hrv, resting_hr))
