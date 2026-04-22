@@ -609,9 +609,21 @@ function renderDashboard(){
   const weekLoad=activities.filter(a=>(Date.now()-new Date(a.date))<7*864e5).reduce((s,a)=>s+(a.training_load||0),0);
   const h=health[0]||{};
   let html=`<div class="stats-grid">
-    <div class="stat-box"><div class="stat-num" style="color:var(--blue)">${ftp}</div><div class="stat-unit">W FTP</div><div class="stat-lbl">${(ftp/weight).toFixed(2)} W/kg</div></div>
-    <div class="stat-box"><div class="stat-num" style="color:var(--orange)">${Math.round(weekLoad)}</div><div class="stat-unit">ATL</div><div class="stat-lbl">Diese Woche</div></div>
-    <div class="stat-box"><div class="stat-num" style="color:var(--cyan)">${h.hrv||'--'}</div><div class="stat-unit">ms HRV</div><div class="stat-lbl">Heute</div></div>
+    <div class="stat-box" onclick="openStatDetail('ftp')" style="cursor:pointer">
+      <div class="stat-num" style="color:var(--blue)">${ftp}</div>
+      <div class="stat-unit">W FTP</div>
+      <div class="stat-lbl">${(ftp/weight).toFixed(2)} W/kg ›</div>
+    </div>
+    <div class="stat-box" onclick="openStatDetail('load')" style="cursor:pointer">
+      <div class="stat-num" style="color:var(--orange)">${Math.round(weekLoad)}</div>
+      <div class="stat-unit">ATL</div>
+      <div class="stat-lbl">Diese Woche ›</div>
+    </div>
+    <div class="stat-box" onclick="openStatDetail('hrv')" style="cursor:pointer">
+      <div class="stat-num" style="color:var(--cyan)">${h.hrv||'--'}</div>
+      <div class="stat-unit">ms HRV</div>
+      <div class="stat-lbl">Heute ›</div>
+    </div>
   </div>`;
   if(health.length){
     html+=`<div class="health-grid">
@@ -876,6 +888,121 @@ async function sendMsg(){
     else addCoachMsg(`❌ ${d.error}`);
   }catch(e){removeTyping();addCoachMsg(`❌ Verbindungsfehler: ${e.message}`);}
   document.getElementById('sendBtn').disabled=false;
+}
+
+function openStatDetail(type){
+  const ftp=profile.ftp||210, weight=profile.weight||63, goal_wpkg=profile.goal_wpkg||4.0;
+  const goal_ftp=Math.round(goal_wpkg*weight);
+  const health=dashData.health||[];
+  const acts=dashData.activities||[];
+  let title='', content='';
+
+  if(type==='ftp'){
+    const wpkg=(ftp/weight).toFixed(2);
+    const needed=goal_ftp-ftp;
+    const pct=Math.round((ftp/goal_ftp)*100);
+    // Letzte 20min Power als FTP-Näherung
+    const best20=acts.filter(a=>a.max_20min_power).map(a=>a.max_20min_power);
+    const peak20=best20.length?Math.max(...best20):null;
+    title='⚡ FTP & Leistung';
+    content=`
+      <div class="iv-block"><div class="iv-bar" style="background:var(--blue)"></div><div>
+        <div class="iv-label">Aktuelle FTP</div>
+        <div class="iv-detail">${ftp}W = ${wpkg} W/kg</div>
+      </div></div>
+      <div class="iv-block"><div class="iv-bar" style="background:var(--green)"></div><div>
+        <div class="iv-label">Ziel</div>
+        <div class="iv-detail">${goal_wpkg} W/kg = ${goal_ftp}W · noch ${needed}W (+${Math.round(needed/ftp*100)}%)</div>
+      </div></div>
+      <div class="iv-block"><div class="iv-bar" style="background:var(--orange)"></div><div>
+        <div class="iv-label">Fortschritt</div>
+        <div style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;margin:6px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--blue);border-radius:3px"></div></div>
+        <div class="iv-detail">${pct}% des Ziels erreicht</div>
+      </div></div>
+      ${peak20?`<div class="iv-block"><div class="iv-bar" style="background:var(--cyan)"></div><div>
+        <div class="iv-label">Bester 20min Power</div>
+        <div class="iv-detail">${peak20}W = ${(peak20/weight).toFixed(2)} W/kg</div>
+      </div></div>`:''}
+      <div style="margin-top:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);margin-bottom:10px">ZONEN (FTP ${ftp}W)</div>
+        ${[['Z1','Erholung',0,0.55],['Z2','Grundlage',0.56,0.75],['Z3','Tempo/SST',0.76,0.90],['Z4','Schwelle',0.91,1.05],['Z5','VO2max',1.06,1.20]].map(([z,n,lo,hi])=>`
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);font-size:13px">
+            <span style="color:var(--text2)">${z} ${n}</span>
+            <span style="font-family:var(--mono);font-weight:600">${Math.round(ftp*lo)}–${Math.round(ftp*hi)}W</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  else if(type==='load'){
+    const now=Date.now();
+    const week=acts.filter(a=>(now-new Date(a.date))<7*864e5);
+    const month=acts.filter(a=>(now-new Date(a.date))<30*864e5);
+    const weekLoad=Math.round(week.reduce((s,a)=>s+(a.training_load||0),0));
+    const monthLoad=Math.round(month.reduce((s,a)=>s+(a.training_load||0),0));
+    const weekMins=week.reduce((s,a)=>s+(a.duration_min||0),0);
+    const weekCals=week.reduce((s,a)=>s+(a.calories||0),0);
+    const status=weekLoad>400?'⚠️ Hoch — mehr Erholung':weekLoad>200?'✅ Optimal':weekLoad>100?'📉 Niedrig':'🔴 Sehr niedrig';
+    title='📊 Trainingsbelastung';
+    content=`
+      <div class="iv-block"><div class="iv-bar" style="background:var(--orange)"></div><div>
+        <div class="iv-label">Diese Woche</div>
+        <div class="iv-detail">${weekLoad} ATL · ${weekMins}min · ${weekCals.toLocaleString()} kcal</div>
+      </div></div>
+      <div class="iv-block"><div class="iv-bar" style="background:var(--text3)"></div><div>
+        <div class="iv-label">Letzter Monat</div>
+        <div class="iv-detail">${monthLoad} ATL · ${month.length} Einheiten</div>
+      </div></div>
+      <div class="iv-block"><div class="iv-bar" style="background:${weekLoad>400?'var(--red)':weekLoad>200?'var(--green)':'var(--orange)'}"></div><div>
+        <div class="iv-label">Status</div>
+        <div class="iv-detail">${status}</div>
+      </div></div>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);margin:16px 0 10px">LETZTE 7 TAGE</div>
+      ${week.map(a=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);font-size:13px">
+        <span style="color:var(--text2)">${a.date} ${a.name?.split(' ').slice(0,2).join(' ')}</span>
+        <span style="font-family:var(--mono);font-weight:600">${Math.round(a.training_load||0)} ATL</span>
+      </div>`).join('')}`;
+  }
+
+  else if(type==='hrv'){
+    const hrvVals=health.filter(h=>h.hrv).map(h=>h.hrv);
+    const avgHrv=hrvVals.length?Math.round(hrvVals.reduce((a,b)=>a+b,0)/hrvVals.length):0;
+    const todayHrv=health[0]?.hrv||0;
+    const trend=hrvVals.length>=2?Math.round(((hrvVals[0]-hrvVals[hrvVals.length-1])/hrvVals[hrvVals.length-1])*100):0;
+    const status=!todayHrv?'Keine Daten':todayHrv>avgHrv*1.05?'🟢 Optimal — volles Training möglich':todayHrv>avgHrv*0.9?'🟢 Gut — Training wie geplant':todayHrv>avgHrv*0.75?'🟡 Moderat — Intensität reduzieren':'🔴 Niedrig — nur Z1 oder Ruhetag';
+    title='💓 HRV & Erholung';
+    content=`
+      <div class="iv-block"><div class="iv-bar" style="background:var(--cyan)"></div><div>
+        <div class="iv-label">Heute</div>
+        <div class="iv-detail">${todayHrv||'--'} ms · ${status}</div>
+      </div></div>
+      <div class="iv-block"><div class="iv-bar" style="background:var(--text3)"></div><div>
+        <div class="iv-label">Ø 7 Tage</div>
+        <div class="iv-detail">${avgHrv} ms · Trend: ${trend>=0?'↑ +':'↓ '}${Math.abs(trend)}%</div>
+      </div></div>
+      <div class="iv-block"><div class="iv-bar" style="background:var(--red)"></div><div>
+        <div class="iv-label">Ruhepuls heute</div>
+        <div class="iv-detail">${health[0]?.resting_hr||'--'} bpm</div>
+      </div></div>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);margin:16px 0 10px">VERLAUF 7 TAGE</div>
+      ${health.slice(0,7).map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2)">
+        <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">${h.date}</span>
+        <div style="display:flex;gap:16px;font-size:12px;font-family:var(--mono)">
+          <span style="color:var(--cyan)">${h.hrv||'--'} ms</span>
+          <span style="color:var(--text3)">${h.resting_hr||'--'} bpm</span>
+          <span style="color:var(--text2)">${h.sleep_duration||'--'}h</span>
+        </div>
+      </div>`).join('')}`;
+  }
+
+  document.getElementById('sheetContent').innerHTML=`
+    <div class="sheet-title">${title}</div>
+    <div style="margin-top:16px">${content}</div>
+    <div class="sheet-actions">
+      <button class="sheet-btn secondary" onclick="closePlanDaySheet()">Schliessen</button>
+      <button class="sheet-btn primary" onclick="askQuick('Analysiere meine ${type==='ftp'?'FTP und Leistungsentwicklung':type==='load'?'Trainingsbelastung diese Woche':'HRV und Erholung der letzten Tage'}');closePlanDaySheet();switchTab('chat')">Coach fragen</button>
+    </div>`;
+  document.getElementById('planDaySheet').classList.remove('hidden');
+  pushHistory();
 }
 
 function openPlanDay(date){
