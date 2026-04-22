@@ -287,14 +287,19 @@ def sync_health(client, days=30):
                     else:
                         hrv = round(float(hrv))
 
-                    # Ruhepuls: aus Schlafdaten oder separatem Endpoint
-                    resting_hr = dto.get("restingHeartRate")
+                    # Ruhepuls: in verschiedenen Feldern der API
+                    resting_hr = (dto.get("restingHeartRate")
+                        or raw.get("restingHeartRate")
+                        or raw.get("dailyHeartRate", {}).get("restingHeartRate"))
                     if not resting_hr:
                         try:
                             stats = client.get_stats(d)
-                            resting_hr = stats.get("restingHeartRate") or stats.get("averageRestingHeartRate")
-                        except Exception:
-                            pass
+                            resting_hr = (stats.get("restingHeartRate")
+                                or stats.get("averageRestingHeartRate")
+                                or stats.get("minHeartRate"))
+                            print(f"RHR from stats {d}: {resting_hr} (keys: {list(stats.keys())[:10]})")
+                        except Exception as e:
+                            print(f"get_stats {d}: {e}")
                     if dur > 0:
                         cur.execute("""
                             INSERT INTO health_data
@@ -407,8 +412,63 @@ Regeln:
 def index():
     return send_from_directory("static", "index.html")
 
-@app.route("/health")
-def health():
+@app.route("/debug-health", methods=["GET"])
+def debug_health():
+    """Zeigt rohe Garmin-Daten für Diagnose."""
+    email = request.args.get("email","")
+    password = request.args.get("pw","")
+    try:
+        client = get_client(email, password)
+        today = date.today().isoformat()
+        raw = client.get_sleep_data(today)
+        dto = raw.get("dailySleepDTO", {})
+
+        # Alle möglichen RHR-Felder
+        rhr_fields = {
+            "dto.restingHeartRate": dto.get("restingHeartRate"),
+            "dto.averageRestingHeartRate": dto.get("averageRestingHeartRate"),
+            "raw.restingHeartRate": raw.get("restingHeartRate"),
+            "raw.averageRestingHeartRate": raw.get("averageRestingHeartRate"),
+            "dto keys with heart": [k for k in dto.keys() if "heart" in k.lower() or "hr" in k.lower()],
+            "raw keys with heart": [k for k in raw.keys() if "heart" in k.lower() or "hr" in k.lower()],
+        }
+
+        # Stats für heute
+        try:
+            stats = client.get_stats(today)
+            rhr_fields["stats.restingHeartRate"] = stats.get("restingHeartRate")
+            rhr_fields["stats keys with heart"] = [k for k in stats.keys() if "heart" in k.lower() or "resting" in k.lower()]
+        except Exception as e:
+            rhr_fields["stats_error"] = str(e)
+
+        # Letzte Radeinheit — 20min Power Felder
+        acts = client.get_activities_by_date(
+            (date.today()-timedelta(days=14)).isoformat(), today) or []
+        cycling = [a for a in acts if "cycl" in (a.get("activityType",{}).get("typeKey","")).lower()
+                   or "virtual" in (a.get("activityType",{}).get("typeKey","")).lower()]
+        power_fields = {}
+        if cycling:
+            a = cycling[0]
+            power_fields = {
+                "name": a.get("activityName"),
+                "maxAvgPower_20": a.get("maxAvgPower_20"),
+                "maxAvgPower_1": a.get("maxAvgPower_1"),
+                "maxAvgPower_2": a.get("maxAvgPower_2"),
+                "maxAvgPower_5": a.get("maxAvgPower_5"),
+                "normPower": a.get("normPower"),
+                "avgPower": a.get("avgPower"),
+                "all_power_keys": [k for k in a.keys() if "power" in k.lower() or "Power" in k],
+            }
+
+        return jsonify({
+            "rhr_debug": rhr_fields,
+            "power_debug": power_fields,
+            "dto_all_keys": list(dto.keys()),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
     return jsonify({"ok": True})
 
 @app.route("/init", methods=["POST"])
