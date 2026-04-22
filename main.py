@@ -194,7 +194,9 @@ def sync_activities(client, days=30):
                      max_20min_power, avg_hr, max_hr, calories, training_load,
                      aerobic_te, anaerobic_te, power_zones, hr_zones, laps, raw)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (id) DO NOTHING
+                    ON CONFLICT (id) DO UPDATE SET
+                    max_20min_power=EXCLUDED.max_20min_power,
+                    laps=EXCLUDED.laps
                 """, (
                     aid,
                     a.get("startTimeLocal", "")[:10] or None,
@@ -287,17 +289,13 @@ def sync_health(client, days=30):
                     else:
                         hrv = round(float(hrv))
 
-                    # Ruhepuls: in verschiedenen Feldern der API
-                    resting_hr = (dto.get("restingHeartRate")
-                        or raw.get("restingHeartRate")
-                        or raw.get("dailyHeartRate", {}).get("restingHeartRate"))
+                    # Ruhepuls: liegt im raw root, nicht im dailySleepDTO
+                    resting_hr = (raw.get("restingHeartRate")
+                        or dto.get("restingHeartRate"))
                     if not resting_hr:
                         try:
                             stats = client.get_stats(d)
-                            resting_hr = (stats.get("restingHeartRate")
-                                or stats.get("averageRestingHeartRate")
-                                or stats.get("minHeartRate"))
-                            print(f"RHR from stats {d}: {resting_hr} (keys: {list(stats.keys())[:10]})")
+                            resting_hr = stats.get("restingHeartRate")
                         except Exception as e:
                             print(f"get_stats {d}: {e}")
                     if dur > 0:
