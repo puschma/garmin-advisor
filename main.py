@@ -287,7 +287,14 @@ def sync_health(client, days=30):
                     else:
                         hrv = round(float(hrv))
 
-                    dur = to_hours(dto.get("sleepTimeSeconds"))
+                    # Ruhepuls: aus Schlafdaten oder separatem Endpoint
+                    resting_hr = dto.get("restingHeartRate")
+                    if not resting_hr:
+                        try:
+                            stats = client.get_stats(d)
+                            resting_hr = stats.get("restingHeartRate") or stats.get("averageRestingHeartRate")
+                        except Exception:
+                            pass
                     if dur > 0:
                         cur.execute("""
                             INSERT INTO health_data
@@ -302,9 +309,9 @@ def sync_health(client, days=30):
                             resting_hr=COALESCE(EXCLUDED.resting_hr, health_data.resting_hr)
                         """, (d, dur, to_hours(dto.get("deepSleepSeconds")),
                               to_hours(dto.get("remSleepSeconds")), score,
-                              hrv, dto.get("restingHeartRate")))
+                              hrv, resting_hr))
                         saved += 1
-                        print(f"Health {d}: dur={dur}h score={score} hrv={hrv}")
+                        print(f"Health {d}: dur={dur}h score={score} hrv={hrv} rhr={resting_hr}")
                 except Exception as e:
                     print(f"Health {d}: {e}")
         conn.commit()
