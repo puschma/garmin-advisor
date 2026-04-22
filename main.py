@@ -344,7 +344,9 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         lap_text = ""
         for l in laps:
             if l.get("avg_power"):
-                lap_text += f"\n      Lap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)})"
+                hr_str = f" | HR {l['avg_hr']}bpm" if l.get("avg_hr") else ""
+                cad_str = f" | Kadenz {l['cadence']}" if l.get("cadence") else ""
+                lap_text += f"\n      Lap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)}){hr_str}{cad_str}"
         marker = " ← NEUESTES TRAINING" if i == 0 else ""
         acts_text += f"""
 • {a['date']} – {a['name']}{marker}
@@ -361,7 +363,8 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         history_text += f"\n{role}: {m['content']}"
 
     return f"""Du bist ein erfahrener Radsport-Coach. Stil: direkt, ehrlich, datenbasiert, motivierend.
-WICHTIG: Du hast ALLE Trainingsdaten des Athleten unten. Du brauchst KEINE weiteren Daten anzufragen — analysiere direkt was du hast.
+
+⚠️ ABSOLUT WICHTIG: Du hast ALLE Daten bereits unten. Frage NIEMALS nach weiteren Daten, Screenshots oder Links. Analysiere was du hast — jetzt, direkt, ohne Rückfragen.
 
 HEUTE: {date.today().strftime('%A, %d.%m.%Y')} (Wochentag beachten!)
 
