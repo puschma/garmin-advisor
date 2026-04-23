@@ -210,7 +210,20 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .no-plan h3{font-size:20px;font-weight:700;margin-bottom:8px}
 .no-plan p{font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:24px}
 
-/* Plan day detail sheet */
+/* ── PROGRESS TAB ── */
+.chart-card{margin:16px 16px 0;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px}
+.chart-title{font-size:14px;font-weight:700;margin-bottom:4px}
+.chart-sub{font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:16px}
+.chart-wrap{width:100%;overflow-x:auto}
+.chart-svg{width:100%;min-width:280px}
+.review-card{margin:12px 16px 0;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px}
+.review-title{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.review-body{font-size:14px;line-height:1.75;color:var(--text);white-space:pre-wrap}
+.review-body strong{color:#fff;font-weight:700}
+.week-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 16px 0}
+.wstat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+.wstat-num{font-size:22px;font-weight:800;line-height:1}
+.wstat-lbl{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:4px}
 .sheet-overlay{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center}
 .sheet-overlay.hidden{display:none}
 .sheet{width:100%;max-width:480px;background:var(--card);border-radius:24px 24px 0 0;padding:20px 20px calc(var(--sb) + 24px);max-height:88vh;overflow-y:auto}
@@ -384,7 +397,19 @@ Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div>
   <div class="tabbar">
     <button class="tabb active" id="tab-chat" onclick="switchTab('chat')"><span class="ti">💬</span>Coach</button>
     <button class="tabb" id="tab-plan" onclick="switchTab('plan')"><span class="ti">📅</span>Plan</button>
+    <button class="tabb" id="tab-progress" onclick="switchTab('progress')"><span class="ti">📈</span>Fortschritt</button>
     <button class="tabb" id="tab-dash" onclick="switchTab('dash')"><span class="ti">📊</span>Übersicht</button>
+  </div>
+
+  <!-- PROGRESS TAB -->
+  <div class="tab-content" id="progressTab">
+    <div class="dash-header">
+      <div><h2>📈 Fortschritt</h2><p id="progressDate"></p></div>
+      <button class="gen-btn" onclick="loadWeeklyReview()">🔄 Wochenrückblick</button>
+    </div>
+    <div id="progressContent" style="overflow-y:auto;flex:1;padding-bottom:20px;-webkit-overflow-scrolling:touch">
+      <div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:14px">Sync drücken um Daten zu laden</div>
+    </div>
   </div>
 </div>
 
@@ -607,7 +632,7 @@ async function doSync(){
 // ═══ DASHBOARD ═══
 async function loadDashboard(){
   if(isDemo){renderDemoDash();return;}
-  try{const res=await fetch(`${serverUrl}/dashboard`,{method:'POST'});const d=await res.json();if(d.ok){dashData=d;renderDashboard();}}catch(e){console.error(e);}
+  try{const res=await fetch(`${serverUrl}/dashboard`,{method:'POST'});const d=await res.json();if(d.ok){dashData=d;renderDashboard();renderProgress();}}catch(e){console.error(e);}
 }
 
 function renderDashboard(){
@@ -1026,6 +1051,158 @@ function openStatDetail(type){
     </div>`;
   document.getElementById('planDaySheet').classList.remove('hidden');
   pushHistory();
+}
+
+// ═══ PROGRESS TAB ═══
+function renderProgress(){
+  const history = dashData.history || [];
+  const health = dashData.health || [];
+  const acts = dashData.activities || [];
+  const ftp = profile.ftp || 210;
+  const weight = profile.weight || 63;
+  const goal_wpkg = profile.goal_wpkg || 4.0;
+
+  document.getElementById('progressDate').textContent =
+    new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'});
+
+  // Woche Stats
+  const now = Date.now();
+  const weekActs = acts.filter(a=>(now-new Date(a.date))<7*864e5);
+  const weekLoad = Math.round(weekActs.reduce((s,a)=>s+(a.training_load||0),0));
+  const weekMins = weekActs.reduce((s,a)=>s+(a.duration_min||0),0);
+  const avgHrv = health.filter(h=>h.hrv).length ?
+    Math.round(health.filter(h=>h.hrv).reduce((s,h)=>s+h.hrv,0)/health.filter(h=>h.hrv).length) : '--';
+  const todayRhr = health[0]?.resting_hr || '--';
+
+  let html = `<div class="week-stats">
+    <div class="wstat"><div class="wstat-num" style="color:var(--orange)">${weekLoad}</div><div class="wstat-lbl">ATL DIESE WOCHE</div></div>
+    <div class="wstat"><div class="wstat-num" style="color:var(--blue)">${weekMins}</div><div class="wstat-lbl">MINUTEN TRAINIERT</div></div>
+    <div class="wstat"><div class="wstat-num" style="color:var(--cyan)">${avgHrv}</div><div class="wstat-lbl">Ø HRV 7 TAGE (ms)</div></div>
+    <div class="wstat"><div class="wstat-num" style="color:var(--red)">${todayRhr}</div><div class="wstat-lbl">RUHEPULS HEUTE</div></div>
+  </div>`;
+
+  // W/kg Fortschritts-Chart
+  if(history.length > 0){
+    html += `<div class="chart-card">
+      <div class="chart-title">⚡ Leistungsentwicklung</div>
+      <div class="chart-sub">Ø Watt pro Einheit · letzte 90 Tage</div>
+      <div class="chart-wrap">${buildChart(history, ftp, weight, goal_wpkg)}</div>
+    </div>`;
+  }
+
+  // HRV Chart
+  if(health.length > 1){
+    html += `<div class="chart-card" style="margin-top:10px">
+      <div class="chart-title">💓 HRV Verlauf</div>
+      <div class="chart-sub">Letzte 7 Tage</div>
+      <div class="chart-wrap">${buildHrvChart(health)}</div>
+    </div>`;
+  }
+
+  // Wochenrückblick Platzhalter
+  html += `<div class="review-card" id="reviewCard">
+    <div class="review-title">📋 Wochenrückblick
+      <button onclick="loadWeeklyReview()" style="margin-left:auto;padding:6px 14px;background:var(--blue);border:none;border-radius:100px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Generieren</button>
+    </div>
+    <div id="reviewBody" style="font-size:14px;color:var(--text3)">Tippe auf "Generieren" für deinen Wochenrückblick vom Coach.</div>
+  </div>`;
+
+  document.getElementById('progressContent').innerHTML = html;
+}
+
+function buildChart(history, ftp, weight, goal_wpkg){
+  if(!history.length) return '';
+  const W=320, H=160, pad={t:20,r:16,b:36,l:44};
+  const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+
+  const vals = history.map(h=>h.avg_power||0);
+  const dates = history.map(h=>h.date);
+  const minV = Math.min(...vals)*0.9;
+  const maxV = Math.max(...vals, ftp)*1.05;
+  const goalFtp = Math.round(goal_wpkg*weight);
+
+  function x(i){ return pad.l + (i/(history.length-1||1))*cW; }
+  function y(v){ return pad.t + cH - ((v-minV)/(maxV-minV))*cH; }
+
+  // Line path
+  const path = history.map((h,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${y(h.avg_power||0).toFixed(1)}`).join(' ');
+
+  // Fill
+  const fill = path + ` L${x(history.length-1).toFixed(1)},${(pad.t+cH).toFixed(1)} L${pad.l},${(pad.t+cH).toFixed(1)} Z`;
+
+  // FTP line y
+  const ftpY = y(ftp).toFixed(1);
+  const goalY = y(goalFtp).toFixed(1);
+
+  // X labels — first and last date
+  const d0 = new Date(dates[0]).toLocaleDateString('de-DE',{day:'numeric',month:'short'});
+  const dN = new Date(dates[dates.length-1]).toLocaleDateString('de-DE',{day:'numeric',month:'short'});
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart-svg" style="height:160px">
+    <!-- Grid -->
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t+cH}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+    <line x1="${pad.l}" y1="${pad.t+cH}" x2="${pad.l+cW}" y2="${pad.t+cH}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+    <!-- FTP line -->
+    <line x1="${pad.l}" y1="${ftpY}" x2="${pad.l+cW}" y2="${ftpY}" stroke="rgba(79,142,247,0.4)" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="${pad.l+cW-2}" y="${parseFloat(ftpY)-4}" fill="rgba(79,142,247,0.8)" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace">FTP ${ftp}W</text>
+    <!-- Goal line -->
+    <line x1="${pad.l}" y1="${goalY}" x2="${pad.l+cW}" y2="${goalY}" stroke="rgba(46,194,126,0.4)" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="${pad.l+cW-2}" y="${parseFloat(goalY)-4}" fill="rgba(46,194,126,0.8)" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace">Ziel ${goalFtp}W</text>
+    <!-- Fill -->
+    <path d="${fill}" fill="rgba(79,142,247,0.08)"/>
+    <!-- Line -->
+    <path d="${path}" fill="none" stroke="#4f8ef7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Dots -->
+    ${history.map((h,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(h.avg_power||0).toFixed(1)}" r="3" fill="#4f8ef7"/>`).join('')}
+    <!-- Y axis labels -->
+    <text x="${pad.l-6}" y="${(pad.t+cH).toFixed(1)}" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace">${Math.round(minV)}W</text>
+    <text x="${pad.l-6}" y="${pad.t+8}" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace">${Math.round(maxV)}W</text>
+    <!-- X labels -->
+    <text x="${pad.l}" y="${H-4}" fill="rgba(255,255,255,0.3)" font-size="9" font-family="JetBrains Mono,monospace">${d0}</text>
+    <text x="${pad.l+cW}" y="${H-4}" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace">${dN}</text>
+  </svg>`;
+}
+
+function buildHrvChart(health){
+  const reversed = [...health].reverse();
+  if(reversed.length < 2) return '';
+  const W=320, H=120, pad={t:16,r:16,b:28,l:36};
+  const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+  const vals = reversed.map(h=>h.hrv||0);
+  const minV = Math.min(...vals.filter(v=>v>0))*0.9;
+  const maxV = Math.max(...vals)*1.05;
+  const avgV = Math.round(vals.filter(v=>v>0).reduce((a,b)=>a+b,0)/vals.filter(v=>v>0).length);
+
+  function x(i){ return pad.l+(i/(reversed.length-1||1))*cW; }
+  function y(v){ return v>0 ? pad.t+cH-((v-minV)/(maxV-minV||1))*cH : pad.t+cH; }
+
+  const path = reversed.map((h,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${y(h.hrv||0).toFixed(1)}`).join(' ');
+  const fill = path+` L${x(reversed.length-1).toFixed(1)},${pad.t+cH} L${pad.l},${pad.t+cH} Z`;
+  const avgY = y(avgV).toFixed(1);
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart-svg" style="height:120px">
+    <line x1="${pad.l}" y1="${avgY}" x2="${pad.l+cW}" y2="${avgY}" stroke="rgba(91,192,235,0.3)" stroke-width="1" stroke-dasharray="3,3"/>
+    <text x="${pad.l+4}" y="${parseFloat(avgY)-4}" fill="rgba(91,192,235,0.7)" font-size="9" font-family="JetBrains Mono,monospace">Ø ${avgV}ms</text>
+    <path d="${fill}" fill="rgba(91,192,235,0.08)"/>
+    <path d="${path}" fill="none" stroke="#5bc0eb" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${reversed.map((h,i)=>h.hrv?`<circle cx="${x(i).toFixed(1)}" cy="${y(h.hrv).toFixed(1)}" r="3" fill="#5bc0eb"/>`:'').join('')}
+    ${reversed.map((h,i)=>i%2===0?`<text x="${x(i).toFixed(1)}" y="${H-4}" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">${new Date(h.date).toLocaleDateString('de-DE',{day:'numeric',month:'numeric'})}</text>`:'').join('')}
+  </svg>`;
+}
+
+async function loadWeeklyReview(){
+  document.getElementById('reviewBody').innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--text2)"><div class="spin" style="width:20px;height:20px;border-width:2px"></div> Coach analysiert deine Woche...</div>`;
+  try{
+    const res = await fetch(`${serverUrl}/weekly-review`,{method:'POST'});
+    const d = await res.json();
+    if(d.ok){
+      document.getElementById('reviewBody').innerHTML = `<div class="review-body">${escHtml(d.review)}</div>`;
+    } else {
+      document.getElementById('reviewBody').innerHTML = `<span style="color:var(--red)">❌ ${d.error}</span>`;
+    }
+  }catch(e){
+    document.getElementById('reviewBody').innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
+  }
 }
 
 function openPlanDay(date){
