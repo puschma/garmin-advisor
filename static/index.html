@@ -618,7 +618,7 @@ async function doSync(){
 // ═══ DASHBOARD ═══
 async function loadDashboard(){
   if(isDemo){renderDemoDash();return;}
-  try{const res=await fetch(`${serverUrl}/dashboard`,{method:'POST'});const d=await res.json();if(d.ok){dashData=d;renderDashboard();renderProgress();}}catch(e){console.error(e);}
+  try{const res=await fetch(`${serverUrl}/dashboard`,{method:'POST'});const d=await res.json();if(d.ok){dashData=d;renderDashboard();}}catch(e){console.error(e);}
 }
 
 function renderDashboard(){
@@ -652,6 +652,7 @@ function renderDashboard(){
   if(activities.length){
     html+=`<div class="sec-hdr">LETZTE EINHEITEN</div>`;
     activities.slice(0,12).forEach(a=>{
+      const pct=a.avg_power?Math.round(a.avg_power/ftp*100):null;
       html+=`<div class="act-card" onclick="openDetail(${a.id})">
         <div class="act-top"><div><div class="act-name">${a.name||'Training'}</div><div class="act-date">${a.date}</div></div></div>
         <div class="act-stats">
