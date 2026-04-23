@@ -298,6 +298,8 @@ def sync_health(client, days=30):
                             resting_hr = stats.get("restingHeartRate")
                         except Exception as e:
                             print(f"get_stats {d}: {e}")
+
+                    dur = to_hours(dto.get("sleepTimeSeconds"))
                     if dur > 0:
                         cur.execute("""
                             INSERT INTO health_data
