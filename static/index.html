@@ -87,26 +87,25 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .chat-header p{font-size:12px;color:var(--text2);margin-top:2px;font-family:var(--mono)}
 .sync-pill{display:flex;align-items:center;gap:7px;padding:9px 16px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
 .sync-pill.busy{color:var(--orange);border-color:rgba(245,166,35,0.3)}
-.messages{flex:1;overflow-y:auto;padding:16px 0 8px;display:flex;flex-direction:column;gap:4px;-webkit-overflow-scrolling:touch}
+.messages{flex:1;overflow-y:auto;padding:8px 0;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch}
 
-/* Coach message — vollflächig wie Claude */
-.msg-coach{padding:16px 18px;animation:mi .25s ease;border-bottom:1px solid var(--border2)}
-@keyframes mi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.coach-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}
-.ca{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#1a3a8a,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
-.coach-name{font-size:13px;font-weight:700;color:var(--text2)}
-.cb2{font-size:15px;line-height:1.75;color:var(--text);white-space:pre-wrap;padding-left:38px;margin-top:-20px}
+/* Coach message — clean, no avatar */
+.msg-coach{padding:16px 20px 16px;animation:mi .2s ease}
+@keyframes mi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.cb2{font-size:15px;line-height:1.8;color:var(--text);white-space:pre-wrap}
 .cb2 strong{color:#fff;font-weight:700}
 
-/* User message — rechts ausgerichtet, kompakt */
-.msg-user{padding:10px 18px;display:flex;justify-content:flex-end;animation:mi .25s ease}
-.ub{background:var(--card2);border:1px solid var(--border);border-radius:18px;padding:12px 16px;color:var(--text);font-size:15px;line-height:1.6;max-width:80%}
+/* User message */
+.msg-user{padding:8px 20px;display:flex;justify-content:flex-end;animation:mi .2s ease}
+.ub{background:var(--card2);border:1px solid var(--border);border-radius:18px;padding:11px 16px;color:var(--text);font-size:15px;line-height:1.6;max-width:82%}
 .ub img{max-width:100%;border-radius:10px;margin-top:8px;display:block}
 
-.date-sep{text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;align-items:center;gap:10px;padding:8px 18px}
+.date-sep{text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;align-items:center;gap:10px;padding:12px 20px}
 .date-sep::before,.date-sep::after{content:'';flex:1;height:1px;background:var(--border2)}
-.tw{padding:16px 18px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--border2)}
-.tdots{display:flex;gap:5px;padding:4px 0}
+
+/* Typing indicator — minimal */
+.tw{padding:16px 20px;animation:mi .2s ease}
+.tdots{display:flex;gap:5px}
 .td{width:7px;height:7px;background:var(--text3);border-radius:50%;animation:tda 1.2s ease-in-out infinite}
 .td:nth-child(2){animation-delay:.2s}
 .td:nth-child(3){animation-delay:.4s}
@@ -348,14 +347,11 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
     </div>
     <div class="messages" id="messages">
       <div class="date-sep">Heute</div>
-      <div class="msg-coach">
-        <div class="coach-row"><div class="ca">🏋️</div><span class="coach-name">Coach</span></div>
-        <div class="cb2">Hey! Ich bin dein Cycling Coach.
+      <div class="msg-coach"><div class="cb2">Hey! Ich bin dein Cycling Coach.
 
 Ich habe Zugriff auf alle deine Garmin-Daten — Trainings, Laps, Watt, HRV, Schlaf.
 
-Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div>
-      </div>
+Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
     </div>
     <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImg(this)">
     <div class="input-area">
@@ -397,20 +393,10 @@ Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div>
   <div class="tabbar">
     <button class="tabb active" id="tab-chat" onclick="switchTab('chat')"><span class="ti">💬</span>Coach</button>
     <button class="tabb" id="tab-plan" onclick="switchTab('plan')"><span class="ti">📅</span>Plan</button>
-    <button class="tabb" id="tab-progress" onclick="switchTab('progress')"><span class="ti">📈</span>Fortschritt</button>
     <button class="tabb" id="tab-dash" onclick="switchTab('dash')"><span class="ti">📊</span>Übersicht</button>
   </div>
 
-  <!-- PROGRESS TAB -->
-  <div class="tab-content" id="progressTab">
-    <div class="dash-header">
-      <div><h2>📈 Fortschritt</h2><p id="progressDate"></p></div>
-      <button class="gen-btn" onclick="loadWeeklyReview()">🔄 Wochenrückblick</button>
-    </div>
-    <div id="progressContent" style="overflow-y:auto;flex:1;padding-bottom:20px;-webkit-overflow-scrolling:touch">
-      <div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:14px">Sync drücken um Daten zu laden</div>
-    </div>
-  </div>
+  <!-- END TABS -->
 </div>
 
 <!-- PLAN DAY SHEET -->
@@ -660,7 +646,7 @@ function renderDashboard(){
   if(health.length){
     html+=`<div class="health-grid">
       <div class="health-box"><div class="hlbl">SCHLAF HEUTE</div><div class="hnum" style="color:var(--blue)">${h.sleep_duration||'--'}<span class="hunit">h</span></div><div class="hsub">Score ${h.sleep_score||'--'}/100</div></div>
-      <div class="health-box"><div class="hlbl">ERHOLUNG</div><div class="hnum" style="color:${h.hrv>55?'var(--green)':h.hrv>40?'var(--orange)':'var(--red)'}">${h.hrv||'--'}<span class="hunit">ms</span></div><div class="hsub">Ruhepuls ${h.resting_hr||'--'} bpm</div></div>
+      <div class="health-box" onclick="openStatDetail('hrv')" style="cursor:pointer"><div class="hlbl">HRV · RUHEPULS</div><div class="hnum" style="color:${h.hrv>55?'var(--green)':h.hrv>40?'var(--orange)':'var(--red)'}">${h.hrv||'--'}<span class="hunit">ms</span></div><div class="hsub">${h.resting_hr||'--'} bpm Ruhepuls ›</div></div>
     </div>`;
   }
   if(activities.length){
@@ -677,6 +663,14 @@ function renderDashboard(){
       </div>`;
     });
   }
+  // Wochenrückblick am Ende
+  html+=`<div style="margin:8px 16px 0;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:700">📋 Wochenrückblick</div>
+      <button onclick="loadWeeklyReviewDash()" style="padding:6px 14px;background:var(--blue);border:none;border-radius:100px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Generieren</button>
+    </div>
+    <div id="reviewBodyDash" style="font-size:14px;color:var(--text3);line-height:1.6">Tippe auf "Generieren" für deinen Wochenrückblick vom Coach.</div>
+  </div>`;
   document.getElementById('dashContent').innerHTML=html;
 }
 function renderDemoDash(){document.getElementById('dashContent').innerHTML=`<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:14px">Demo-Modus</div>`;}
@@ -878,7 +872,7 @@ function scrollToBottom(msgs){
 function addCoachMsg(text, scroll=true){
   const msgs=document.getElementById('messages');
   const div=document.createElement('div'); div.className='msg-coach';
-  div.innerHTML=`<div class="coach-row"><div class="ca">🏋️</div><span class="coach-name">Coach</span></div><div class="cb2">${escHtml(text)}</div>`;
+  div.innerHTML=`<div class="cb2">${escHtml(text)}</div>`;
   msgs.appendChild(div);
   if(scroll) smartScroll(msgs);
 }
@@ -889,13 +883,13 @@ function addUserMsg(text, scroll=true, imgSrc=null){
   const imgH=imgSrc?`<img src="${imgSrc}" style="max-width:200px;border-radius:10px;margin-top:8px">`:''
   div.innerHTML=`<div class="ub">${escHtml(text)}${imgH}</div>`;
   msgs.appendChild(div);
-  if(scroll) scrollToBottom(msgs); // User-Nachrichten immer scrollen
+  if(scroll) scrollToBottom(msgs);
 }
 
 function showTyping(){
   const msgs=document.getElementById('messages');
   const div=document.createElement('div'); div.className='tw'; div.id='typing';
-  div.innerHTML=`<div class="ca" style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#1a3a8a,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">🏋️</div><div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
+  div.innerHTML=`<div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
   msgs.appendChild(div);
   smartScroll(msgs);
 }
@@ -1013,27 +1007,24 @@ function openStatDetail(type){
     const avgHrv=hrvVals.length?Math.round(hrvVals.reduce((a,b)=>a+b,0)/hrvVals.length):0;
     const todayHrv=health[0]?.hrv||0;
     const trend=hrvVals.length>=2?Math.round(((hrvVals[0]-hrvVals[hrvVals.length-1])/hrvVals[hrvVals.length-1])*100):0;
-    const status=!todayHrv?'Keine Daten':todayHrv>avgHrv*1.05?'🟢 Optimal — volles Training möglich':todayHrv>avgHrv*0.9?'🟢 Gut — Training wie geplant':todayHrv>avgHrv*0.75?'🟡 Moderat — Intensität reduzieren':'🔴 Niedrig — nur Z1 oder Ruhetag';
-    title='💓 HRV & Erholung';
+    const status=!todayHrv?'Keine Daten':todayHrv>avgHrv*1.05?'🟢 Optimal':todayHrv>avgHrv*0.9?'🟢 Gut':todayHrv>avgHrv*0.75?'🟡 Moderat':'🔴 Niedrig';
+    title='💓 HRV & Ruhepuls';
     content=`
+      ${health.length>1?`<div style="margin-bottom:16px">${buildHrvChart(health)}</div>`:''}
       <div class="iv-block"><div class="iv-bar" style="background:var(--cyan)"></div><div>
-        <div class="iv-label">Heute</div>
-        <div class="iv-detail">${todayHrv||'--'} ms · ${status}</div>
+        <div class="iv-label">Heute · ${status}</div>
+        <div class="iv-detail">${todayHrv||'--'} ms HRV · ${health[0]?.resting_hr||'--'} bpm Ruhepuls</div>
       </div></div>
       <div class="iv-block"><div class="iv-bar" style="background:var(--text3)"></div><div>
         <div class="iv-label">Ø 7 Tage</div>
         <div class="iv-detail">${avgHrv} ms · Trend: ${trend>=0?'↑ +':'↓ '}${Math.abs(trend)}%</div>
-      </div></div>
-      <div class="iv-block"><div class="iv-bar" style="background:var(--red)"></div><div>
-        <div class="iv-label">Ruhepuls heute</div>
-        <div class="iv-detail">${health[0]?.resting_hr||'--'} bpm</div>
       </div></div>
       <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);margin:16px 0 10px">VERLAUF 7 TAGE</div>
       ${health.slice(0,7).map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2)">
         <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">${h.date}</span>
         <div style="display:flex;gap:16px;font-size:12px;font-family:var(--mono)">
           <span style="color:var(--cyan)">${h.hrv||'--'} ms</span>
-          <span style="color:var(--text3)">${h.resting_hr||'--'} bpm</span>
+          <span style="color:var(--red)">${h.resting_hr||'--'} bpm</span>
           <span style="color:var(--text2)">${h.sleep_duration||'--'}h</span>
         </div>
       </div>`).join('')}`;
@@ -1200,6 +1191,17 @@ async function loadWeeklyReview(){
   }catch(e){
     document.getElementById('reviewBody').innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
   }
+}
+
+async function loadWeeklyReviewDash(){
+  const el=document.getElementById('reviewBodyDash');
+  if(!el)return;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--text2)"><div class="spin" style="width:18px;height:18px;border-width:2px"></div> Coach analysiert...</div>`;
+  try{
+    const res=await fetch(`${serverUrl}/weekly-review`,{method:'POST'});
+    const d=await res.json();
+    el.innerHTML=d.ok?`<div style="font-size:14px;line-height:1.75;color:var(--text);white-space:pre-wrap">${escHtml(d.review)}</div>`:`<span style="color:var(--red)">❌ ${d.error}</span>`;
+  }catch(e){el.innerHTML=`<span style="color:var(--red)">❌ ${e.message}</span>`;}
 }
 
 function openPlanDay(date){
