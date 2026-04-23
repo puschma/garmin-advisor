@@ -637,10 +637,10 @@ function renderDashboard(){
       <div class="stat-unit">ATL</div>
       <div class="stat-lbl">Diese Woche ›</div>
     </div>
-    <div class="stat-box" onclick="openStatDetail('hrv')" style="cursor:pointer">
-      <div class="stat-num" style="color:var(--cyan)">${h.hrv||'--'}</div>
-      <div class="stat-unit">ms HRV</div>
-      <div class="stat-lbl">Heute ›</div>
+    <div class="stat-box" onclick="loadWeeklyReviewDash()" style="cursor:pointer">
+      <div class="stat-num" style="color:var(--green);font-size:18px">📋</div>
+      <div class="stat-unit">Wochen-</div>
+      <div class="stat-lbl">rückblick</div>
     </div>
   </div>`;
   if(health.length){
