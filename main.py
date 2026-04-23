@@ -480,10 +480,23 @@ def fix_health():
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM health_data")
             conn.commit()
+        print(f"Health data deleted, starting sync for {email}")
         client = get_client(email, password)
+        print(f"Got client: {client.display_name}")
+        # Test: hol einen Tag direkt
+        today = date.today().isoformat()
+        try:
+            raw = client.get_sleep_data(today)
+            print(f"Sleep data keys: {list(raw.keys())}")
+            print(f"RHR: {raw.get('restingHeartRate')}")
+            dto = raw.get("dailySleepDTO", {})
+            print(f"Sleep duration: {dto.get('sleepTimeSeconds')}")
+        except Exception as e:
+            print(f"Sleep test error: {e}")
         saved = sync_health(client, 30)
         return jsonify({"ok": True, "saved": saved})
     except Exception as e:
+        print(f"fix-health error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/debug-db")
