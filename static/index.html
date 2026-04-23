@@ -666,11 +666,8 @@ function renderDashboard(){
   if(activities.length){
     html+=`<div class="sec-hdr">LETZTE EINHEITEN</div>`;
     activities.slice(0,12).forEach(a=>{
-      const isCyc=a.type&&(a.type.includes('cycl')||a.type.includes('virtual'));
-      const emoji=isCyc?'🚴':a.type==='running'?'🏃':a.type==='swimming'?'🏊':'⚡';
-      const pct=a.avg_power?Math.round(a.avg_power/(profile.ftp||210)*100):null;
       html+=`<div class="act-card" onclick="openDetail(${a.id})">
-        <div class="act-top"><span class="act-icon">${emoji}</span><div><div class="act-name">${a.name||'Training'}</div><div class="act-date">${a.date}</div></div></div>
+        <div class="act-top"><div><div class="act-name">${a.name||'Training'}</div><div class="act-date">${a.date}</div></div></div>
         <div class="act-stats">
           ${a.duration_min?`<span class="act-stat"><b>${a.duration_min}</b> min</span>`:''}
           ${a.avg_power?`<span class="act-stat"><b>${a.avg_power}W</b>${pct?` (${pct}%)`:''}</span>`:''}
