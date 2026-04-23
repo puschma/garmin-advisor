@@ -469,6 +469,23 @@ def debug_health():
 
     return jsonify({"ok": True})
 
+@app.route("/fix-health", methods=["POST"])
+def fix_health():
+    """Löscht alle health_data und synct neu."""
+    body = request.get_json() or {}
+    email = body.get("email","")
+    password = body.get("password","")
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM health_data")
+            conn.commit()
+        client = get_client(email, password)
+        saved = sync_health(client, 30)
+        return jsonify({"ok": True, "saved": saved})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/debug-db")
 def debug_db():
     try:
