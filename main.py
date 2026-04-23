@@ -561,25 +561,130 @@ def dashboard():
                 """)
                 health = [dict(r) for r in cur.fetchall()]
 
+                # Historische Aktivitäten für Fortschritts-Chart (90 Tage)
+                cur.execute("""
+                    SELECT date::text, avg_power, norm_power, max_20min_power,
+                           training_load, duration_min, type
+                    FROM activities
+                    WHERE date >= NOW() - INTERVAL '90 days'
+                    AND avg_power IS NOT NULL
+                    ORDER BY date ASC
+                """)
+                history = [dict(r) for r in cur.fetchall()]
+
                 # Parse JSON fields
                 for a in activities:
                     for f in ["laps", "power_zones", "hr_zones", "raw"]:
                         if isinstance(a.get(f), str):
                             try: a[f] = json.loads(a[f])
                             except: pass
-                    # Serialize dates
-                    if a.get("date"):
-                        a["date"] = str(a["date"])
-                    if a.get("created_at"):
-                        a["created_at"] = str(a["created_at"])
+                    if a.get("date"): a["date"] = str(a["date"])
+                    if a.get("created_at"): a["created_at"] = str(a["created_at"])
 
                 for h in health:
-                    if h.get("date"):
-                        h["date"] = str(h["date"])
-                    if h.get("created_at"):
-                        h["created_at"] = str(h["created_at"])
+                    if h.get("date"): h["date"] = str(h["date"])
+                    if h.get("created_at"): h["created_at"] = str(h["created_at"])
 
-        return jsonify({"ok": True, "activities": activities, "health": health})
+        return jsonify({"ok": True, "activities": activities, "health": health, "history": history})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/weekly-review", methods=["POST"])
+def weekly_review():
+    """Generiert einen Wochenrückblick vom Coach."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"ok": False, "error": "ANTHROPIC_API_KEY fehlt"}), 500
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT data FROM profile WHERE id=1")
+                row = cur.fetchone()
+                profile_data = row["data"] if row else {}
+
+                # Letzte 7 Tage Aktivitäten
+                cur.execute("""
+                    SELECT date::text, name, duration_min, avg_power, norm_power,
+                           avg_hr, training_load, aerobic_te, anaerobic_te, laps
+                    FROM activities
+                    WHERE date >= NOW() - INTERVAL '7 days'
+                    ORDER BY date DESC
+                """)
+                week_acts = [dict(r) for r in cur.fetchall()]
+
+                # Vorwoche zum Vergleich
+                cur.execute("""
+                    SELECT date::text, name, duration_min, avg_power, training_load
+                    FROM activities
+                    WHERE date >= NOW() - INTERVAL '14 days'
+                    AND date < NOW() - INTERVAL '7 days'
+                    ORDER BY date DESC
+                """)
+                prev_acts = [dict(r) for r in cur.fetchall()]
+
+                # Gesundheitsdaten letzte 7 Tage
+                cur.execute("""
+                    SELECT date::text, sleep_duration, sleep_score, hrv, resting_hr
+                    FROM health_data
+                    WHERE date >= NOW() - INTERVAL '7 days'
+                    ORDER BY date DESC
+                """)
+                week_health = [dict(r) for r in cur.fetchall()]
+
+                # Parse laps
+                for a in week_acts:
+                    if isinstance(a.get("laps"), str):
+                        try: a["laps"] = json.loads(a["laps"])
+                        except: a["laps"] = []
+
+        ftp = profile_data.get("ftp", 210)
+        weight = profile_data.get("weight", 63)
+        goal_wpkg = profile_data.get("goal_wpkg", 4.0)
+        goal_ftp = round(goal_wpkg * weight)
+
+        week_load = sum(a.get("training_load", 0) or 0 for a in week_acts)
+        prev_load = sum(a.get("training_load", 0) or 0 for a in prev_acts)
+        avg_hrv = round(sum(h["hrv"] for h in week_health if h.get("hrv")) / max(1, sum(1 for h in week_health if h.get("hrv")))) if week_health else 0
+        avg_sleep = round(sum(h["sleep_duration"] for h in week_health if h.get("sleep_duration")) / max(1, sum(1 for h in week_health if h.get("sleep_duration"))), 1) if week_health else 0
+
+        acts_text = "\n".join([
+            f"• {a['date']}: {a['name']} — {a['duration_min']}min @ {a['avg_power'] or '?'}W | Load {round(a['training_load'] or 0)}"
+            for a in week_acts
+        ])
+
+        prompt = f"""Du bist ein Radsport-Coach. Schreibe einen prägnanten Wochenrückblick auf Deutsch.
+
+ATHLET: FTP {ftp}W | {ftp/weight:.2f} W/kg | Ziel: {goal_wpkg} W/kg = {goal_ftp}W
+
+DIESE WOCHE:
+{acts_text if acts_text else "Keine Aktivitäten"}
+Gesamtbelastung: {round(week_load)} ATL
+Vorwoche: {round(prev_load)} ATL ({'+' if week_load >= prev_load else ''}{round(week_load-prev_load)} ATL)
+
+GESUNDHEIT:
+Ø HRV: {avg_hrv}ms | Ø Schlaf: {avg_sleep}h
+
+Struktur deines Rückblicks:
+📊 WOCHE IN ZAHLEN — 2-3 Kerndaten
+✅ WAS GUT WAR — konkret mit Datenbezug
+⚠️ WAS FEHLT / VERBESSERUNG — ehrlich, direkt
+🎯 FOKUS NÄCHSTE WOCHE — 1-2 konkrete Empfehlungen mit Wattbereichen
+
+Maximal 200 Wörter. Direkt, kein Blabla."""
+
+        res = req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 600,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=30
+        )
+        data = res.json()
+        text = "".join(b.get("text", "") for b in data.get("content", []))
+        if not text:
+            return jsonify({"ok": False, "error": f"Claude: {data}"}), 500
+        return jsonify({"ok": True, "review": text})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
