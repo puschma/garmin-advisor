@@ -87,20 +87,27 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .chat-header p{font-size:12px;color:var(--text2);margin-top:2px;font-family:var(--mono)}
 .sync-pill{display:flex;align-items:center;gap:7px;padding:9px 16px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
 .sync-pill.busy{color:var(--orange);border-color:rgba(245,166,35,0.3)}
-.messages{flex:1;overflow-y:auto;padding:20px 16px 8px;display:flex;flex-direction:column;gap:20px;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
-.msg-coach{display:flex;gap:12px;align-items:flex-start;animation:mi .25s ease}
-@keyframes mi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.ca{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a3a8a,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;margin-top:2px;box-shadow:0 2px 8px rgba(79,142,247,0.3)}
-.cb2{background:var(--card);border:1px solid var(--border);border-radius:4px 18px 18px 18px;padding:14px 16px;color:var(--text);font-size:15px;line-height:1.7;white-space:pre-wrap;max-width:calc(100% - 52px);box-shadow:0 1px 4px rgba(0,0,0,0.2)}
+.messages{flex:1;overflow-y:auto;padding:16px 0 8px;display:flex;flex-direction:column;gap:4px;-webkit-overflow-scrolling:touch}
+
+/* Coach message — vollflächig wie Claude */
+.msg-coach{padding:16px 18px;animation:mi .25s ease;border-bottom:1px solid var(--border2)}
+@keyframes mi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.coach-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}
+.ca{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#1a3a8a,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.coach-name{font-size:13px;font-weight:700;color:var(--text2)}
+.cb2{font-size:15px;line-height:1.75;color:var(--text);white-space:pre-wrap;padding-left:38px;margin-top:-20px}
 .cb2 strong{color:#fff;font-weight:700}
-.msg-user{display:flex;flex-direction:column;align-items:flex-end;gap:4px;animation:mi .25s ease}
-.ub{background:var(--blue);border-radius:18px 4px 18px 18px;padding:13px 16px;color:#fff;font-size:15px;line-height:1.6;max-width:85%}
+
+/* User message — rechts ausgerichtet, kompakt */
+.msg-user{padding:10px 18px;display:flex;justify-content:flex-end;animation:mi .25s ease}
+.ub{background:var(--card2);border:1px solid var(--border);border-radius:18px;padding:12px 16px;color:var(--text);font-size:15px;line-height:1.6;max-width:80%}
 .ub img{max-width:100%;border-radius:10px;margin-top:8px;display:block}
-.date-sep{text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;align-items:center;gap:10px}
+
+.date-sep{text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;align-items:center;gap:10px;padding:8px 18px}
 .date-sep::before,.date-sep::after{content:'';flex:1;height:1px;background:var(--border2)}
-.tw{display:flex;gap:12px;align-items:center}
-.tdots{display:flex;gap:4px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:4px 18px 18px 18px}
-.td{width:8px;height:8px;background:var(--text3);border-radius:50%;animation:tda 1.2s ease-in-out infinite}
+.tw{padding:16px 18px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--border2)}
+.tdots{display:flex;gap:5px;padding:4px 0}
+.td{width:7px;height:7px;background:var(--text3);border-radius:50%;animation:tda 1.2s ease-in-out infinite}
 .td:nth-child(2){animation-delay:.2s}
 .td:nth-child(3){animation-delay:.4s}
 @keyframes tda{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(-4px);opacity:1}}
@@ -329,12 +336,12 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
     <div class="messages" id="messages">
       <div class="date-sep">Heute</div>
       <div class="msg-coach">
-        <div class="ca">🏋️</div>
-        <div><div class="cb2">Hey! Ich bin dein Cycling Coach.
+        <div class="coach-row"><div class="ca">🏋️</div><span class="coach-name">Coach</span></div>
+        <div class="cb2">Hey! Ich bin dein Cycling Coach.
 
 Ich habe Zugriff auf alle deine Garmin-Daten — Trainings, Laps, Watt, HRV, Schlaf.
 
-Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
+Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div>
       </div>
     </div>
     <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImg(this)">
@@ -827,32 +834,48 @@ async function loadChatHistory(){
     if(d.ok&&d.messages.length>0){
       const msgs=document.getElementById('messages');
       d.messages.slice(-30).forEach(m=>{if(m.role==='user')addUserMsg(m.content,false);else addCoachMsg(m.content,false);});
-      setTimeout(()=>msgs.scrollTop=msgs.scrollHeight,100);
+      // Nach History immer ans Ende scrollen
+      setTimeout(()=>msgs.scrollTop=msgs.scrollHeight,150);
     }
   }catch(e){console.error(e);}
 }
 
-function addCoachMsg(text,scroll=true){
-  const msgs=document.getElementById('messages');
-  const div=document.createElement('div');div.className='msg-coach';
-  div.innerHTML=`<div class="ca">🏋️</div><div><div class="cb2">${escHtml(text)}</div></div>`;
-  msgs.appendChild(div);
-  if(scroll)setTimeout(()=>msgs.scrollTop=msgs.scrollHeight,50);
+function isNearBottom(el, threshold=120){
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
 }
-function addUserMsg(text,scroll=true,imgSrc=null){
+
+function smartScroll(msgs){
+  // Nur scrollen wenn User schon unten ist
+  if(isNearBottom(msgs)) setTimeout(()=>msgs.scrollTop=msgs.scrollHeight, 50);
+}
+
+function scrollToBottom(msgs){
+  setTimeout(()=>msgs.scrollTop=msgs.scrollHeight, 50);
+}
+
+function addCoachMsg(text, scroll=true){
   const msgs=document.getElementById('messages');
-  const div=document.createElement('div');div.className='msg-user';
-  const imgH=imgSrc?`<img src="${imgSrc}" style="max-width:200px;border-radius:10px;margin-top:8px">`:'';
+  const div=document.createElement('div'); div.className='msg-coach';
+  div.innerHTML=`<div class="coach-row"><div class="ca">🏋️</div><span class="coach-name">Coach</span></div><div class="cb2">${escHtml(text)}</div>`;
+  msgs.appendChild(div);
+  if(scroll) smartScroll(msgs);
+}
+
+function addUserMsg(text, scroll=true, imgSrc=null){
+  const msgs=document.getElementById('messages');
+  const div=document.createElement('div'); div.className='msg-user';
+  const imgH=imgSrc?`<img src="${imgSrc}" style="max-width:200px;border-radius:10px;margin-top:8px">`:''
   div.innerHTML=`<div class="ub">${escHtml(text)}${imgH}</div>`;
   msgs.appendChild(div);
-  if(scroll)setTimeout(()=>msgs.scrollTop=msgs.scrollHeight,50);
+  if(scroll) scrollToBottom(msgs); // User-Nachrichten immer scrollen
 }
+
 function showTyping(){
   const msgs=document.getElementById('messages');
-  const div=document.createElement('div');div.className='tw';div.id='typing';
-  div.innerHTML=`<div class="ca" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a3a8a,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏋️</div><div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
+  const div=document.createElement('div'); div.className='tw'; div.id='typing';
+  div.innerHTML=`<div class="ca" style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#1a3a8a,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">🏋️</div><div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
   msgs.appendChild(div);
-  setTimeout(()=>msgs.scrollTop=msgs.scrollHeight,50);
+  smartScroll(msgs);
 }
 function removeTyping(){const t=document.getElementById('typing');if(t)t.remove();}
 
