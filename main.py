@@ -481,6 +481,10 @@ def fix_health():
                 cur.execute("DELETE FROM health_data")
             conn.commit()
         print(f"Health data deleted, starting sync for {email}")
+        _client_cache.pop(email, None)
+        tp = token_path(email)
+        if os.path.exists(tp):
+            os.remove(tp)
         client = get_client(email, password)
         print(f"Got client: {client.display_name}")
         # Test: hol einen Tag direkt
