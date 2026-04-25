@@ -413,22 +413,23 @@ def sync_strava(days=30):
 
 @app.route("/cleanup-outdoor", methods=["POST"])
 def cleanup_outdoor():
-    """Löscht alle Outdoor-Einträge die nicht von Strava kommen."""
+    """Löscht alle Outdoor-Einträge die nicht sauber von Strava kommen."""
     try:
         with get_db() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute("""
                     DELETE FROM activities
-                    WHERE (raw IS NULL OR raw->>'source' != 'strava')
-                    AND LOWER(name) NOT LIKE '%zwift%'
+                    WHERE LOWER(name) NOT LIKE '%zwift%'
                     AND LOWER(name) NOT LIKE '%virtual%'
                     AND LOWER(name) NOT LIKE '%indoor%'
-                    RETURNING id, name, date::text
+                    RETURNING id, name, date::text, raw
                 """)
                 deleted = cur.fetchall()
             conn.commit()
         return jsonify({"ok": True, "deleted": len(deleted),
-                       "entries": [{"name": d["name"], "date": d["date"]} for d in deleted]})
+                       "entries": [{"name": d["name"], "date": d["date"],
+                                   "raw_source": (d["raw"] or {}).get("source"),
+                                   "strava_id": (d["raw"] or {}).get("strava_id")} for d in deleted]})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
