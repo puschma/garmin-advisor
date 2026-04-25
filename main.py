@@ -7,8 +7,9 @@ PostgreSQL + Garmin + Anthropic Claude
 import json
 import os
 import re
+import time
 from datetime import date, timedelta, datetime
-from flask import Flask, request, jsonify, Response, send_from_directory
+from flask import Flask, request, jsonify, Response, send_from_directory, redirect
 from flask_cors import CORS
 from garminconnect import Garmin
 import requests as req
@@ -158,7 +159,6 @@ def get_strava_token():
     if not row:
         return None
     # Token refresh wenn abgelaufen
-    import time
     if row["expires_at"] < int(time.time()) + 60:
         res = req.post(STRAVA_TOKEN_URL, data={
             "client_id": STRAVA_CLIENT_ID,
@@ -193,7 +193,6 @@ def sync_strava(days=30):
     if not token:
         return 0, "Strava nicht verbunden"
 
-    import time
     after = int(time.time()) - days * 86400
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -326,7 +325,6 @@ def strava_connect():
     url = (f"{STRAVA_AUTH_URL}?client_id={STRAVA_CLIENT_ID}"
            f"&response_type=code&redirect_uri={redirect_uri}"
            f"&approval_prompt=force&scope=activity:read_all")
-    from flask import redirect
     return redirect(url)
 
 
