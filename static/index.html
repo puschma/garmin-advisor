@@ -327,6 +327,13 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
     <div class="rh"><span>2 Tage</span><span>7 Tage</span></div>
   </div>
   <button class="btn-primary" onclick="saveProfile()">Los geht's 🚀</button>
+
+  <div style="margin-top:16px;padding:16px;background:var(--card2);border:1px solid var(--border);border-radius:16px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">🔗 Strava verbinden</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">Für korrekte Zonen bei Outdoor-Einheiten. Indoor/Zwift läuft weiter über Garmin.</div>
+    <div id="stravaStatus" style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:10px">Prüfe Status...</div>
+    <a id="stravaBtn" href="/strava-connect" style="display:inline-block;padding:10px 20px;background:#fc4c02;border-radius:12px;color:#fff;font-size:13px;font-weight:700;text-decoration:none">Mit Strava verbinden</a>
+  </div>
 </div>
 
 <!-- APP -->
@@ -572,13 +579,29 @@ async function saveProfile(){
   setTimeout(()=>addCoachMsg(`Perfekt! Dein Profil:\n\n⚡ FTP: ${p.ftp}W = ${(p.ftp/p.weight).toFixed(2)} W/kg\n🎯 Ziel: ${p.goal_wpkg} W/kg = ${Math.round(p.goal_wpkg*p.weight)}W\n📈 Noch ${Math.round(p.goal_wpkg*p.weight)-p.ftp}W zu gewinnen\n\nDrück Sync um deine Daten zu laden — dann erstellen wir deinen Trainingsplan! 🚴`),300);
 }
 
-function showProfile(){
+async function showProfile(){
   if(profile.ftp)document.getElementById('pFtp').value=profile.ftp;
   if(profile.weight)document.getElementById('pWeight').value=profile.weight;
   if(profile.goal_wpkg)document.getElementById('pGoalWpkg').value=profile.goal_wpkg;
   if(profile.age)document.getElementById('pAge').value=profile.age;
   if(profile.days){document.getElementById('pDays').value=profile.days;document.getElementById('daysVal').textContent=profile.days;}
   showScreen('profileScreen');
+  try{
+    const res=await fetch(`${serverUrl}/strava-status`);
+    const d=await res.json();
+    const el=document.getElementById('stravaStatus');
+    const btn=document.getElementById('stravaBtn');
+    if(d.connected){
+      el.textContent='✅ Strava verbunden';
+      el.style.color='var(--green)';
+      btn.textContent='Erneut verbinden';
+      btn.style.background='var(--card2)';
+      btn.style.border='1px solid var(--border)';
+      btn.style.color='var(--text2)';
+    } else {
+      el.textContent='❌ Nicht verbunden — Outdoor-Zonen fehlen';
+    }
+  }catch{}
 }
 
 // ═══ NAVIGATION ═══
