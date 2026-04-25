@@ -188,8 +188,23 @@ def is_outdoor(name, activity_type):
         return False
     return True
 
+def calculate_zones_from_watts(watts_list, ftp):
+    """Berechnet Zonen aus Sekunden-Watt-Daten mit unserer FTP."""
+    zones = {"Z1":0,"Z2":0,"Z3":0,"Z4":0,"Z5":0,"Z6":0,"Z7":0}
+    for w in watts_list:
+        if w is None or w == 0: continue
+        pct = w / ftp * 100
+        if pct < 56: zones["Z1"] += 1
+        elif pct < 76: zones["Z2"] += 1
+        elif pct < 91: zones["Z3"] += 1
+        elif pct < 106: zones["Z4"] += 1
+        elif pct < 121: zones["Z5"] += 1
+        elif pct < 151: zones["Z6"] += 1
+        else: zones["Z7"] += 1
+    return zones
+
 def sync_strava(days=30):
-    """Holt Outdoor-Aktivitäten von Strava und updated die DB."""
+    """Holt Outdoor-Aktivitäten von Strava, berechnet Zonen mit unserer FTP."""
     token = get_strava_token()
     if not token:
         return 0, "Strava nicht verbunden"
@@ -197,10 +212,19 @@ def sync_strava(days=30):
     after = int(time.time()) - days * 86400
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Aktivitätsliste holen
+    # Unsere FTP aus Profil
+    ftp = 210
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT data FROM profile WHERE id=1")
+                row = cur.fetchone()
+                if row and row["data"]:
+                    ftp = row["data"].get("ftp", 210)
+    except: pass
+
     res = req.get(f"{STRAVA_API}/athlete/activities",
-                  headers=headers,
-                  params={"after": after, "per_page": 50})
+                  headers=headers, params={"after": after, "per_page": 50})
     activities = res.json()
     if not isinstance(activities, list):
         return 0, f"Strava Fehler: {activities}"
@@ -209,53 +233,40 @@ def sync_strava(days=30):
     with get_db() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             for a in activities:
-                # Nur Radfahren, nur Outdoor
-                if a.get("type") not in ("Ride", "VirtualRide"):
+                # Nur echte Outdoor-Rides
+                if a.get("type") != "Ride":
                     continue
-                if a.get("type") == "VirtualRide":
-                    continue  # Indoor → Garmin kümmert sich
-
-                aid = a.get("id")
-                if not aid:
+                if a.get("trainer") or a.get("manual"):
                     continue
 
-                # Prüfe ob schon vorhanden mit Strava-Daten
-                cur.execute("SELECT id, raw FROM activities WHERE id=%s", (aid,))
-                existing = cur.fetchone()
-                if existing:
-                    raw = existing["raw"]
-                    if isinstance(raw, str):
-                        try: raw = json.loads(raw)
-                        except: raw = {}
-                    if raw and raw.get("strava_synced"):
-                        continue  # Bereits mit Strava-Daten
+                strava_id = a.get("id")
+                act_date = (a.get("start_date_local") or "")[:10]
+                duration_min = round((a.get("moving_time") or 0) / 60)
 
-                # Detail-Daten holen (Zonen!)
-                detail = req.get(f"{STRAVA_API}/activities/{aid}",
-                                headers=headers).json()
+                # Duplikat-Check: Garmin-Eintrag am selben Tag mit ähnlicher Dauer?
+                cur.execute("""
+                    SELECT id FROM activities
+                    WHERE date=%s AND duration_min BETWEEN %s AND %s
+                    AND (raw IS NULL OR raw->>'strava_id' IS NULL)
+                    ORDER BY created_at ASC LIMIT 1
+                """, (act_date, duration_min - 15, duration_min + 15))
+                garmin_match = cur.fetchone()
 
-                # Zonen holen
-                zones_res = req.get(f"{STRAVA_API}/activities/{aid}/zones",
-                                   headers=headers).json()
+                # Strava-Streams für eigene Zonen-Berechnung
+                streams_res = req.get(f"{STRAVA_API}/activities/{strava_id}/streams",
+                    headers=headers,
+                    params={"keys": "watts", "key_by_type": "true"})
+                streams = streams_res.json()
 
-                # Power Zones extrahieren
-                power_zones = {}
-                if isinstance(zones_res, list):
-                    for zone_group in zones_res:
-                        if zone_group.get("type") == "power":
-                            for i, z in enumerate(zone_group.get("distribution_buckets", []), 1):
-                                power_zones[f"Z{i}"] = z.get("time", 0)
+                watts_list = []
+                if isinstance(streams, dict) and "watts" in streams:
+                    watts_list = streams["watts"].get("data", [])
 
-                # HR Zones
-                hr_zones = {}
-                if isinstance(zones_res, list):
-                    for zone_group in zones_res:
-                        if zone_group.get("type") == "heartrate":
-                            for i, z in enumerate(zone_group.get("distribution_buckets", []), 1):
-                                hr_zones[f"Z{i}"] = z.get("time", 0)
+                power_zones = calculate_zones_from_watts(watts_list, ftp) if watts_list else {}
+                print(f"Strava {act_date} '{a.get('name')}': {len(watts_list)} watts, zones={power_zones}")
 
-                # Laps/Segmente als Laps
-                laps_res = req.get(f"{STRAVA_API}/activities/{aid}/laps",
+                # Laps
+                laps_res = req.get(f"{STRAVA_API}/activities/{strava_id}/laps",
                                   headers=headers).json()
                 laps = []
                 if isinstance(laps_res, list):
@@ -263,34 +274,29 @@ def sync_strava(days=30):
                         dur = round((l.get("elapsed_time") or 0) / 60, 1)
                         if dur < 0.5: continue
                         laps.append({
-                            "index": i + 1,
+                            "index": i+1,
                             "duration_min": dur,
-                            "avg_power": l.get("average_watts"),
-                            "max_power": l.get("max_watts"),
-                            "avg_hr": l.get("average_heartrate"),
-                            "cadence": l.get("average_cadence"),
-                            "intensity": None,
+                            "avg_power": round(l["average_watts"]) if l.get("average_watts") else None,
+                            "avg_hr": round(l["average_heartrate"]) if l.get("average_heartrate") else None,
+                            "cadence": round(l["average_cadence"]) if l.get("average_cadence") else None,
                         })
 
-                act_date = (a.get("start_date_local") or "")[:10]
-                duration_min = round((a.get("moving_time") or 0) / 60)
-                raw_data = {"strava_synced": True, "strava_id": aid}
+                detail = req.get(f"{STRAVA_API}/activities/{strava_id}", headers=headers).json()
+                raw_data = {"strava_synced": True, "strava_id": strava_id}
 
-                if existing:
+                if garmin_match:
+                    # Garmin-Eintrag mit Strava-Zonen und Laps anreichern
                     cur.execute("""
                         UPDATE activities SET
-                        power_zones=%s, hr_zones=%s, laps=%s, raw=%s,
-                        avg_power=%s, norm_power=%s, avg_hr=%s
+                        power_zones=%s,
+                        laps=CASE WHEN laps IS NULL OR laps='[]'::jsonb THEN %s ELSE laps END,
+                        raw=%s
                         WHERE id=%s
-                    """, (
-                        json.dumps(power_zones), json.dumps(hr_zones),
-                        json.dumps(laps), json.dumps(raw_data),
-                        detail.get("average_watts"),
-                        detail.get("weighted_average_watts"),
-                        detail.get("average_heartrate"),
-                        aid
-                    ))
+                    """, (json.dumps(power_zones), json.dumps(laps),
+                          json.dumps(raw_data), garmin_match["id"]))
+                    print(f"✅ Garmin+Strava merged: {act_date}")
                 else:
+                    # Neue Strava-only Aktivität
                     cur.execute("""
                         INSERT INTO activities
                         (id, date, name, type, duration_min, avg_power, norm_power,
@@ -298,25 +304,61 @@ def sync_strava(days=30):
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         ON CONFLICT (id) DO UPDATE SET
                         power_zones=EXCLUDED.power_zones,
-                        hr_zones=EXCLUDED.hr_zones,
-                        laps=EXCLUDED.laps,
-                        raw=EXCLUDED.raw
+                        laps=EXCLUDED.laps, raw=EXCLUDED.raw
                     """, (
-                        aid, act_date, a.get("name"), "cycling",
-                        duration_min,
-                        detail.get("average_watts"),
-                        detail.get("weighted_average_watts"),
-                        detail.get("average_heartrate"),
-                        detail.get("max_heartrate"),
+                        strava_id, act_date, a.get("name"), "cycling", duration_min,
+                        round(detail["average_watts"]) if detail.get("average_watts") else None,
+                        round(detail["weighted_average_watts"]) if detail.get("weighted_average_watts") else None,
+                        round(detail["average_heartrate"]) if detail.get("average_heartrate") else None,
+                        round(detail["max_heartrate"]) if detail.get("max_heartrate") else None,
                         detail.get("calories"),
-                        json.dumps(power_zones), json.dumps(hr_zones),
+                        json.dumps(power_zones), json.dumps({}),
                         json.dumps(laps), json.dumps(raw_data)
                     ))
                 saved += 1
-                print(f"Strava sync: {a.get('name')} {act_date} zones={power_zones}")
         conn.commit()
     return saved, "ok"
 
+
+@app.route("/cleanup-dupes", methods=["POST"])
+def cleanup_dupes():
+    """Löscht Strava-Duplikate die bereits als Garmin-Eintrag vorhanden sind."""
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                # Finde alle Strava-only Einträge
+                cur.execute("""
+                    SELECT id, date, duration_min, raw
+                    FROM activities
+                    WHERE raw->>'strava_synced' = 'true'
+                    AND raw->>'strava_id' IS NOT NULL
+                """)
+                strava_acts = cur.fetchall()
+
+                deleted = 0
+                for sa in strava_acts:
+                    strava_id = sa["raw"].get("strava_id") if sa["raw"] else None
+                    if not strava_id:
+                        continue
+                    # Gibt es einen anderen Eintrag am selben Tag mit ähnlicher Dauer?
+                    cur.execute("""
+                        SELECT id FROM activities
+                        WHERE date=%s
+                        AND duration_min BETWEEN %s AND %s
+                        AND id != %s
+                        AND (raw IS NULL OR raw->>'strava_synced' IS NULL)
+                        LIMIT 1
+                    """, (str(sa["date"]), (sa["duration_min"] or 0) - 15,
+                          (sa["duration_min"] or 0) + 15, sa["id"]))
+                    garmin = cur.fetchone()
+                    if garmin:
+                        cur.execute("DELETE FROM activities WHERE id=%s", (sa["id"],))
+                        deleted += 1
+                        print(f"Deleted Strava dupe: {sa['id']} ({sa['date']})")
+            conn.commit()
+        return jsonify({"ok": True, "deleted": deleted})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/debug-strava")
 def debug_strava():
