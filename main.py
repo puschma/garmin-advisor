@@ -317,6 +317,26 @@ def sync_strava(days=30):
     return saved, "ok"
 
 
+@app.route("/init-strava", methods=["POST"])
+def init_strava():
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS strava_tokens (
+                        id INT PRIMARY KEY DEFAULT 1,
+                        access_token TEXT,
+                        refresh_token TEXT,
+                        expires_at BIGINT,
+                        athlete_id BIGINT,
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+            conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/strava-connect")
 def strava_connect():
     """Leitet zu Strava OAuth weiter."""
@@ -1579,3 +1599,9 @@ if __name__ == "__main__":
         print(f"DB init: {e}")
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
+# Auto-init on import (für gunicorn)
+try:
+    init_db()
+except Exception as e:
+    print(f"Auto DB init: {e}")
