@@ -829,6 +829,37 @@ function openDetail(id){
     });
     html+=`</div>`;
   }
+
+  // Power Zones
+  const pz = typeof a.power_zones === 'string' ? JSON.parse(a.power_zones||'{}') : (a.power_zones||{});
+  const ftp2 = profile.ftp||210;
+  const zoneInfo = [
+    {key:'Z1', label:'Z1 Erholung',    color:'#5bc0eb', max:`<${Math.round(ftp2*0.55)}W`},
+    {key:'Z2', label:'Z2 Grundlage',   color:'#2ec27e', max:`${Math.round(ftp2*0.56)}-${Math.round(ftp2*0.75)}W`},
+    {key:'Z3', label:'Z3 Tempo/SST',   color:'#f5a623', max:`${Math.round(ftp2*0.76)}-${Math.round(ftp2*0.90)}W`},
+    {key:'Z4', label:'Z4 Schwelle',    color:'#e07832', max:`${Math.round(ftp2*0.91)}-${Math.round(ftp2*1.05)}W`},
+    {key:'Z5', label:'Z5 VO2max',      color:'#e05252', max:`${Math.round(ftp2*1.06)}-${Math.round(ftp2*1.20)}W`},
+    {key:'Z6', label:'Z6+ Anaerob',    color:'#9b3dca', max:`>${Math.round(ftp2*1.21)}W`},
+  ];
+  const totalSec = Object.values(pz).reduce((s,v)=>s+(v||0),0);
+  if(totalSec > 0){
+    html+=`<div class="dsec"><div class="dsec-title">Zonen-Verteilung</div>`;
+    zoneInfo.forEach(z=>{
+      const secs = pz[z.key]||0;
+      if(secs === 0) return;
+      const mins = Math.round(secs/60);
+      const pct = Math.round((secs/totalSec)*100);
+      html+=`<div class="lap-item">
+        <div class="lap-top">
+          <span class="lap-name">${z.label}</span>
+          <span style="font-size:13px;font-family:var(--mono);font-weight:700;color:${z.color}">${mins}min</span>
+        </div>
+        <div class="lap-bar-bg"><div class="lap-bar-fill" style="width:${pct}%;background:${z.color}"></div></div>
+        <div class="lap-meta">${z.max} · ${pct}% der Einheit</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
   html+=`<button class="coach-btn" onclick="askAboutActivity(${a.id})">💬 Coach nach dieser Einheit fragen</button>`;
   document.getElementById('detailBody').innerHTML=html;
   document.getElementById('detailScreen').classList.add('open');
