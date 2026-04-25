@@ -347,23 +347,76 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         else: zone = "Z7 (Neuromuskulär)"
         return f"{pct}% FTP → {zone}"
 
+    def format_zones(power_zones, hr_zones, duration_min, ftp):
+        """Formatiert Zonen-Verteilung als lesbaren Text."""
+        if not power_zones:
+            return ""
+        
+        def fmt_sec(s):
+            if not s or s == 0: return None
+            m = round(s / 60)
+            return f"{m}min" if m > 0 else None
+
+        z_labels = {
+            "Z1": f"Z1 Erholung <{round(ftp*0.55)}W",
+            "Z2": f"Z2 Grundlage {round(ftp*0.56)}-{round(ftp*0.75)}W",
+            "Z3": f"Z3 Tempo/SST {round(ftp*0.76)}-{round(ftp*0.90)}W",
+            "Z4": f"Z4 Schwelle {round(ftp*0.91)}-{round(ftp*1.05)}W",
+            "Z5": f"Z5 VO2max {round(ftp*1.06)}-{round(ftp*1.20)}W",
+            "Z6": f"Z6+ Anaerob >{round(ftp*1.21)}W",
+        }
+
+        parts = []
+        for z in ["Z1","Z2","Z3","Z4","Z5","Z6"]:
+            secs = power_zones.get(z)
+            t = fmt_sec(secs)
+            if t:
+                parts.append(f"{z_labels[z]}: {t}")
+
+        return "\n      Zonen: " + " | ".join(parts) if parts else ""
+
+    def detect_activity_type(name, activity_type):
+        """Erkennt ob Indoor oder Outdoor."""
+        name_lower = (name or "").lower()
+        type_lower = (activity_type or "").lower()
+        if "zwift" in name_lower or "virtual" in type_lower or "indoor" in name_lower:
+            return "🏠 Indoor (Zwift)"
+        elif "wahoo" in name_lower or any(x in name_lower for x in ["radfahren", "ride", "outdoor", "straße"]):
+            return "🌳 Outdoor"
+        return "🚴 Radfahren"
+
     acts_text = ""
     for i, a in enumerate(recent_activities[:10]):
         laps = a.get("laps") or []
         if isinstance(laps, str):
             try: laps = json.loads(laps)
             except: laps = []
+
+        power_zones = a.get("power_zones") or {}
+        if isinstance(power_zones, str):
+            try: power_zones = json.loads(power_zones)
+            except: power_zones = {}
+
         lap_text = ""
         for l in laps:
             if l.get("avg_power"):
                 hr_str = f" | HR {l['avg_hr']}bpm" if l.get("avg_hr") else ""
                 cad_str = f" | Kadenz {l['cadence']}" if l.get("cadence") else ""
                 lap_text += f"\n      Lap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)}){hr_str}{cad_str}"
+
+        zones_text = format_zones(power_zones, a.get("hr_zones"), a.get("duration_min"), ftp)
+        act_type = detect_activity_type(a.get("name"), a.get("type"))
         marker = " ← NEUESTES TRAINING" if i == 0 else ""
+
+        # Outdoor-Hinweis wenn keine Laps aber Zonen vorhanden
+        outdoor_note = ""
+        if not laps and "🌳" in act_type and zones_text:
+            outdoor_note = "\n      ⚠️ Outdoor ohne Laps — bitte Zonen-Verteilung für echte Intensitätsbewertung nutzen!"
+
         acts_text += f"""
-• {a['date']} – {a['name']}{marker}
+• {a['date']} – {a['name']} [{act_type}]{marker}
   Dauer: {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a['norm_power'] or '?'}W | Ø HR: {a['avg_hr'] or '?'}bpm
-  Aerob TE: {a['aerobic_te'] or '?'} | Anaerob TE: {a['anaerobic_te'] or '?'}{lap_text}"""
+  Aerob TE: {a['aerobic_te'] or '?'} | Anaerob TE: {a['anaerobic_te'] or '?'}{zones_text}{outdoor_note}{lap_text}"""
 
     health_text = ""
     for h in recent_health[:7]:
@@ -401,6 +454,8 @@ BISHERIGER CHAT (nur zur Orientierung):
 Regeln:
 - Frag NIEMALS nach Daten die du bereits oben hast
 - Beziehe dich immer auf konkrete Zahlen aus den Daten
+- Bei Outdoor-Einheiten ohne Laps: Nutze die Zonen-Verteilung für die Intensitätsbewertung — NICHT nur den Durchschnittswatt! Z.B. 45min in Z4/Z5 = intensive Einheit, egal ob Ø-Watt niedrig ist
+- Bei Indoor/Zwift: Lap-Daten sind präziser, nutze diese
 - Nenne immer konkrete Wattbereiche bei Empfehlungen
 - Antworte auf Deutsch, präzise und ohne Fülltext"""
 
@@ -734,7 +789,7 @@ def chat():
 
                 # Letzte Aktivitäten
                 cur.execute("""
-                    SELECT id, date::text, name, duration_min, avg_power, norm_power,
+                    SELECT id, date::text, name, type, duration_min, avg_power, norm_power,
                            avg_hr, aerobic_te, anaerobic_te, laps, power_zones, hr_zones,
                            training_load
                     FROM activities ORDER BY date DESC, created_at DESC LIMIT 15
