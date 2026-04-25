@@ -331,50 +331,62 @@ def strava_connect():
 @app.route("/strava-callback")
 def strava_callback():
     """Verarbeitet Strava OAuth Callback."""
-    code = request.args.get("code")
-    error = request.args.get("error")
-    if error or not code:
-        return f"<h2>❌ Strava Verbindung fehlgeschlagen: {error}</h2>", 400
+    try:
+        code = request.args.get("code")
+        error = request.args.get("error")
+        print(f"Strava callback: code={code[:10] if code else None} error={error}")
 
-    res = req.post(STRAVA_TOKEN_URL, data={
-        "client_id": STRAVA_CLIENT_ID,
-        "client_secret": STRAVA_CLIENT_SECRET,
-        "code": code,
-        "grant_type": "authorization_code"
-    })
-    data = res.json()
-    if "access_token" not in data:
-        return f"<h2>❌ Token Fehler: {data}</h2>", 400
+        if error or not code:
+            return f"<h2>❌ Strava Fehler: {error}</h2>", 400
 
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO strava_tokens (id, access_token, refresh_token, expires_at, athlete_id)
-                VALUES (1, %s, %s, %s, %s)
-                ON CONFLICT (id) DO UPDATE SET
-                access_token=EXCLUDED.access_token,
-                refresh_token=EXCLUDED.refresh_token,
-                expires_at=EXCLUDED.expires_at,
-                athlete_id=EXCLUDED.athlete_id,
-                updated_at=NOW()
-            """, (data["access_token"], data["refresh_token"],
-                  data["expires_at"], data.get("athlete", {}).get("id")))
-        conn.commit()
+        base_url = request.host_url.rstrip("/")
+        redirect_uri = f"{base_url}/strava-callback"
+        print(f"Token exchange: redirect_uri={redirect_uri}")
 
-    athlete = data.get("athlete", {})
-    name = f"{athlete.get('firstname','')} {athlete.get('lastname','')}".strip()
-    return f"""
-    <html><head><meta charset="UTF-8">
-    <style>body{{background:#0a0a0a;color:#f0f0f0;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}
-    .box{{text-align:center;padding:40px;background:#161616;border-radius:24px;border:1px solid rgba(255,255,255,0.08)}}
-    h2{{font-size:24px;margin-bottom:8px}}p{{color:rgba(240,240,240,0.5);margin-bottom:24px}}
-    a{{padding:14px 28px;background:#4f8ef7;border-radius:12px;color:#fff;text-decoration:none;font-weight:700}}</style>
-    </head><body><div class="box">
-    <div style="font-size:48px;margin-bottom:16px">✅</div>
-    <h2>Strava verbunden!</h2>
-    <p>Willkommen {name}! Deine Outdoor-Einheiten werden jetzt automatisch mit korrekten Zonen geladen.</p>
-    <a href="/">Zurück zur App</a>
-    </div></body></html>"""
+        res = req.post(STRAVA_TOKEN_URL, data={
+            "client_id": STRAVA_CLIENT_ID,
+            "client_secret": STRAVA_CLIENT_SECRET,
+            "code": code,
+            "grant_type": "authorization_code"
+        }, timeout=15)
+        data = res.json()
+        print(f"Token response keys: {list(data.keys())}")
+
+        if "access_token" not in data:
+            return f"<h2>❌ Token Fehler: {data}</h2>", 400
+
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO strava_tokens (id, access_token, refresh_token, expires_at, athlete_id)
+                    VALUES (1, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                    access_token=EXCLUDED.access_token,
+                    refresh_token=EXCLUDED.refresh_token,
+                    expires_at=EXCLUDED.expires_at,
+                    athlete_id=EXCLUDED.athlete_id,
+                    updated_at=NOW()
+                """, (data["access_token"], data["refresh_token"],
+                      data["expires_at"], data.get("athlete", {}).get("id")))
+            conn.commit()
+
+        athlete = data.get("athlete", {})
+        name = f"{athlete.get('firstname','')} {athlete.get('lastname','')}".strip()
+        return f"""<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <style>body{{background:#0a0a0a;color:#f0f0f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}
+        .box{{text-align:center;padding:40px;background:#161616;border-radius:24px}}
+        a{{padding:14px 28px;background:#4f8ef7;border-radius:12px;color:#fff;text-decoration:none;font-weight:700;display:inline-block;margin-top:20px}}</style>
+        </head><body><div class="box">
+        <div style="font-size:48px;margin-bottom:16px">✅</div>
+        <h2>Strava verbunden!</h2>
+        <p style="color:rgba(240,240,240,0.5)">Willkommen {name}!</p>
+        <a href="/">Zurück zur App</a>
+        </div></body></html>"""
+    except Exception as e:
+        print(f"Strava callback error: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"<h2>❌ Server Fehler: {str(e)}</h2>", 500
 
 
 @app.route("/strava-status")
