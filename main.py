@@ -318,6 +318,36 @@ def sync_strava(days=30):
     return saved, "ok"
 
 
+@app.route("/debug-strava")
+def debug_strava():
+    try:
+        token = get_strava_token()
+        if not token:
+            return jsonify({"error": "Nicht verbunden"})
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # Athleten-Info inkl. FTP
+        athlete = req.get(f"{STRAVA_API}/athlete", headers=headers).json()
+        
+        # Letzte Aktivität mit Zonen
+        acts = req.get(f"{STRAVA_API}/athlete/activities", 
+                      headers=headers, params={"per_page": 3}).json()
+        
+        zones_info = {}
+        if acts and isinstance(acts, list):
+            aid = acts[0]["id"]
+            zones_info = req.get(f"{STRAVA_API}/activities/{aid}/zones", 
+                               headers=headers).json()
+        
+        return jsonify({
+            "athlete_ftp": athlete.get("ftp"),
+            "athlete_weight": athlete.get("weight"),
+            "latest_activity": acts[0]["name"] if acts else None,
+            "zones_raw": zones_info
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/init-strava", methods=["POST"])
 def init_strava():
     try:
