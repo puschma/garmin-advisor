@@ -78,7 +78,15 @@ def init_db():
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
 
-                CREATE TABLE IF NOT EXISTS training_plan (
+                CREATE TABLE IF NOT EXISTS strava_tokens (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    expires_at BIGINT,
+                    athlete_id BIGINT,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
                     id SERIAL PRIMARY KEY,
                     week_start DATE NOT NULL,
                     plan JSONB NOT NULL,
@@ -132,8 +140,261 @@ def get_client(email, password):
     return c
 
 # ══════════════════════════════════════════════
-# GARMIN DATA FETCHING
+# STRAVA
 # ══════════════════════════════════════════════
+
+STRAVA_CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID", "")
+STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "")
+STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
+STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
+STRAVA_API = "https://www.strava.com/api/v3"
+
+def get_strava_token():
+    """Holt gültigen Strava Access Token, refresht wenn nötig."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT * FROM strava_tokens WHERE id=1")
+            row = cur.fetchone()
+    if not row:
+        return None
+    # Token refresh wenn abgelaufen
+    import time
+    if row["expires_at"] < int(time.time()) + 60:
+        res = req.post(STRAVA_TOKEN_URL, data={
+            "client_id": STRAVA_CLIENT_ID,
+            "client_secret": STRAVA_CLIENT_SECRET,
+            "grant_type": "refresh_token",
+            "refresh_token": row["refresh_token"]
+        })
+        data = res.json()
+        if "access_token" in data:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE strava_tokens SET access_token=%s, refresh_token=%s,
+                        expires_at=%s, updated_at=NOW() WHERE id=1
+                    """, (data["access_token"], data["refresh_token"], data["expires_at"]))
+                conn.commit()
+            return data["access_token"]
+        return None
+    return row["access_token"]
+
+def is_outdoor(name, activity_type):
+    """Erkennt ob eine Aktivität outdoor ist."""
+    name_lower = (name or "").lower()
+    type_lower = (activity_type or "").lower()
+    if "zwift" in name_lower or "virtual" in type_lower or "indoor" in name_lower:
+        return False
+    return True
+
+def sync_strava(days=30):
+    """Holt Outdoor-Aktivitäten von Strava und updated die DB."""
+    token = get_strava_token()
+    if not token:
+        return 0, "Strava nicht verbunden"
+
+    import time
+    after = int(time.time()) - days * 86400
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Aktivitätsliste holen
+    res = req.get(f"{STRAVA_API}/athlete/activities",
+                  headers=headers,
+                  params={"after": after, "per_page": 50})
+    activities = res.json()
+    if not isinstance(activities, list):
+        return 0, f"Strava Fehler: {activities}"
+
+    saved = 0
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            for a in activities:
+                # Nur Radfahren, nur Outdoor
+                if a.get("type") not in ("Ride", "VirtualRide"):
+                    continue
+                if a.get("type") == "VirtualRide":
+                    continue  # Indoor → Garmin kümmert sich
+
+                aid = a.get("id")
+                if not aid:
+                    continue
+
+                # Prüfe ob schon vorhanden mit Strava-Daten
+                cur.execute("SELECT id, raw FROM activities WHERE id=%s", (aid,))
+                existing = cur.fetchone()
+                if existing:
+                    raw = existing["raw"]
+                    if isinstance(raw, str):
+                        try: raw = json.loads(raw)
+                        except: raw = {}
+                    if raw and raw.get("strava_synced"):
+                        continue  # Bereits mit Strava-Daten
+
+                # Detail-Daten holen (Zonen!)
+                detail = req.get(f"{STRAVA_API}/activities/{aid}",
+                                headers=headers).json()
+
+                # Zonen holen
+                zones_res = req.get(f"{STRAVA_API}/activities/{aid}/zones",
+                                   headers=headers).json()
+
+                # Power Zones extrahieren
+                power_zones = {}
+                if isinstance(zones_res, list):
+                    for zone_group in zones_res:
+                        if zone_group.get("type") == "power":
+                            for i, z in enumerate(zone_group.get("distribution_buckets", []), 1):
+                                power_zones[f"Z{i}"] = z.get("time", 0)
+
+                # HR Zones
+                hr_zones = {}
+                if isinstance(zones_res, list):
+                    for zone_group in zones_res:
+                        if zone_group.get("type") == "heartrate":
+                            for i, z in enumerate(zone_group.get("distribution_buckets", []), 1):
+                                hr_zones[f"Z{i}"] = z.get("time", 0)
+
+                # Laps/Segmente als Laps
+                laps_res = req.get(f"{STRAVA_API}/activities/{aid}/laps",
+                                  headers=headers).json()
+                laps = []
+                if isinstance(laps_res, list):
+                    for i, l in enumerate(laps_res):
+                        dur = round((l.get("elapsed_time") or 0) / 60, 1)
+                        if dur < 0.5: continue
+                        laps.append({
+                            "index": i + 1,
+                            "duration_min": dur,
+                            "avg_power": l.get("average_watts"),
+                            "max_power": l.get("max_watts"),
+                            "avg_hr": l.get("average_heartrate"),
+                            "cadence": l.get("average_cadence"),
+                            "intensity": None,
+                        })
+
+                act_date = (a.get("start_date_local") or "")[:10]
+                duration_min = round((a.get("moving_time") or 0) / 60)
+                raw_data = {"strava_synced": True, "strava_id": aid}
+
+                if existing:
+                    cur.execute("""
+                        UPDATE activities SET
+                        power_zones=%s, hr_zones=%s, laps=%s, raw=%s,
+                        avg_power=%s, norm_power=%s, avg_hr=%s
+                        WHERE id=%s
+                    """, (
+                        json.dumps(power_zones), json.dumps(hr_zones),
+                        json.dumps(laps), json.dumps(raw_data),
+                        detail.get("average_watts"),
+                        detail.get("weighted_average_watts"),
+                        detail.get("average_heartrate"),
+                        aid
+                    ))
+                else:
+                    cur.execute("""
+                        INSERT INTO activities
+                        (id, date, name, type, duration_min, avg_power, norm_power,
+                         avg_hr, max_hr, calories, power_zones, hr_zones, laps, raw)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (id) DO UPDATE SET
+                        power_zones=EXCLUDED.power_zones,
+                        hr_zones=EXCLUDED.hr_zones,
+                        laps=EXCLUDED.laps,
+                        raw=EXCLUDED.raw
+                    """, (
+                        aid, act_date, a.get("name"), "cycling",
+                        duration_min,
+                        detail.get("average_watts"),
+                        detail.get("weighted_average_watts"),
+                        detail.get("average_heartrate"),
+                        detail.get("max_heartrate"),
+                        detail.get("calories"),
+                        json.dumps(power_zones), json.dumps(hr_zones),
+                        json.dumps(laps), json.dumps(raw_data)
+                    ))
+                saved += 1
+                print(f"Strava sync: {a.get('name')} {act_date} zones={power_zones}")
+        conn.commit()
+    return saved, "ok"
+
+
+@app.route("/strava-connect")
+def strava_connect():
+    """Leitet zu Strava OAuth weiter."""
+    base_url = request.host_url.rstrip("/")
+    redirect_uri = f"{base_url}/strava-callback"
+    url = (f"{STRAVA_AUTH_URL}?client_id={STRAVA_CLIENT_ID}"
+           f"&response_type=code&redirect_uri={redirect_uri}"
+           f"&approval_prompt=force&scope=activity:read_all")
+    from flask import redirect
+    return redirect(url)
+
+
+@app.route("/strava-callback")
+def strava_callback():
+    """Verarbeitet Strava OAuth Callback."""
+    code = request.args.get("code")
+    error = request.args.get("error")
+    if error or not code:
+        return f"<h2>❌ Strava Verbindung fehlgeschlagen: {error}</h2>", 400
+
+    res = req.post(STRAVA_TOKEN_URL, data={
+        "client_id": STRAVA_CLIENT_ID,
+        "client_secret": STRAVA_CLIENT_SECRET,
+        "code": code,
+        "grant_type": "authorization_code"
+    })
+    data = res.json()
+    if "access_token" not in data:
+        return f"<h2>❌ Token Fehler: {data}</h2>", 400
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO strava_tokens (id, access_token, refresh_token, expires_at, athlete_id)
+                VALUES (1, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                access_token=EXCLUDED.access_token,
+                refresh_token=EXCLUDED.refresh_token,
+                expires_at=EXCLUDED.expires_at,
+                athlete_id=EXCLUDED.athlete_id,
+                updated_at=NOW()
+            """, (data["access_token"], data["refresh_token"],
+                  data["expires_at"], data.get("athlete", {}).get("id")))
+        conn.commit()
+
+    athlete = data.get("athlete", {})
+    name = f"{athlete.get('firstname','')} {athlete.get('lastname','')}".strip()
+    return f"""
+    <html><head><meta charset="UTF-8">
+    <style>body{{background:#0a0a0a;color:#f0f0f0;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}
+    .box{{text-align:center;padding:40px;background:#161616;border-radius:24px;border:1px solid rgba(255,255,255,0.08)}}
+    h2{{font-size:24px;margin-bottom:8px}}p{{color:rgba(240,240,240,0.5);margin-bottom:24px}}
+    a{{padding:14px 28px;background:#4f8ef7;border-radius:12px;color:#fff;text-decoration:none;font-weight:700}}</style>
+    </head><body><div class="box">
+    <div style="font-size:48px;margin-bottom:16px">✅</div>
+    <h2>Strava verbunden!</h2>
+    <p>Willkommen {name}! Deine Outdoor-Einheiten werden jetzt automatisch mit korrekten Zonen geladen.</p>
+    <a href="/">Zurück zur App</a>
+    </div></body></html>"""
+
+
+@app.route("/strava-status")
+def strava_status():
+    """Prüft ob Strava verbunden ist."""
+    try:
+        token = get_strava_token()
+        if not token:
+            return jsonify({"connected": False})
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT athlete_id FROM strava_tokens WHERE id=1")
+                row = cur.fetchone()
+        return jsonify({"connected": True, "athlete_id": row["athlete_id"] if row else None})
+    except Exception as e:
+        return jsonify({"connected": False, "error": str(e)})
+
+
 
 def to_hours(secs):
     return round((secs or 0) / 3600, 1)
@@ -593,7 +854,22 @@ def sync():
         client = get_client(email, password)
         acts = sync_activities(client, days)
         health_saved = sync_health(client, days)
-        return jsonify({"ok": True, "activities_saved": acts, "health_saved": health_saved})
+
+        # Strava sync für Outdoor-Aktivitäten
+        strava_saved = 0
+        strava_msg = ""
+        strava_token = get_strava_token()
+        if strava_token:
+            strava_saved, strava_msg = sync_strava(days)
+            print(f"Strava: {strava_saved} Aktivitäten aktualisiert")
+
+        return jsonify({
+            "ok": True,
+            "activities_saved": acts,
+            "health_saved": health_saved,
+            "strava_saved": strava_saved,
+            "strava_connected": bool(strava_token)
+        })
     except Exception as e:
         _client_cache.pop(email, None)
         return jsonify({"ok": False, "error": str(e)}), 500
