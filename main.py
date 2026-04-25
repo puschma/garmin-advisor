@@ -931,8 +931,16 @@ def debug_db():
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute("SELECT date::text, resting_hr, hrv, sleep_score FROM health_data ORDER BY date DESC LIMIT 5")
                 health = [dict(r) for r in cur.fetchall()]
-                cur.execute("SELECT date::text, name, max_20min_power, avg_power FROM activities ORDER BY date DESC LIMIT 5")
-                acts = [dict(r) for r in cur.fetchall()]
+                cur.execute("SELECT date::text, name, max_20min_power, avg_power, power_zones, raw FROM activities ORDER BY date DESC LIMIT 5")
+                acts = []
+                for r in cur.fetchall():
+                    a = dict(r)
+                    pz = a.get("power_zones") or {}
+                    a["has_zones"] = bool(pz and any(v for v in pz.values() if v))
+                    a["zones_total_sec"] = sum(v for v in pz.values() if v) if pz else 0
+                    a["strava_merged"] = bool(a.get("raw") and a["raw"].get("strava_synced"))
+                    del a["raw"]
+                    acts.append(a)
         return jsonify({"health": health, "activities": acts})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
