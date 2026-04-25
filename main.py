@@ -88,6 +88,7 @@ def init_db():
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
 
+                CREATE TABLE IF NOT EXISTS training_plan (
                     id SERIAL PRIMARY KEY,
                     week_start DATE NOT NULL,
                     plan JSONB NOT NULL,
