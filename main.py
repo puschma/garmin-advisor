@@ -320,6 +320,31 @@ def sync_strava(days=30):
     return saved, "ok"
 
 
+@app.route("/cleanup-outdoor", methods=["POST"])
+def cleanup_outdoor():
+    """Löscht alle Outdoor-Rides aus Garmin — werden neu von Strava geladen."""
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                # Lösche alle Einträge die nicht von Zwift/Virtual kommen
+                # und nicht bereits Strava-only sind
+                cur.execute("""
+                    DELETE FROM activities
+                    WHERE (raw IS NULL OR raw->>'strava_synced' IS NULL)
+                    AND LOWER(name) NOT LIKE '%zwift%'
+                    AND LOWER(name) NOT LIKE '%virtual%'
+                    AND LOWER(name) NOT LIKE '%indoor%'
+                    AND type NOT LIKE '%virtual%'
+                    AND (type LIKE '%cycl%' OR type = 'cycling')
+                    RETURNING id, name, date::text
+                """)
+                deleted = cur.fetchall()
+            conn.commit()
+        return jsonify({"ok": True, "deleted": len(deleted),
+                       "entries": [{"name": d["name"], "date": d["date"]} for d in deleted]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/cleanup-dupes", methods=["POST"])
 def cleanup_dupes():
     """Löscht Strava-Duplikate die bereits als Garmin-Eintrag vorhanden sind."""
@@ -548,6 +573,15 @@ def sync_activities(client, days=30):
                     laps = parse_laps(splits)
                 except Exception as e:
                     print(f"Laps {aid}: {e}")
+
+                # Outdoor-Rides überspringen — kommen von Strava
+                type_key = a.get("activityType", {}).get("typeKey") or ""
+                name_lower = (a.get("activityName") or "").lower()
+                is_indoor = ("zwift" in name_lower or "virtual" in type_key.lower() or "indoor" in name_lower)
+                is_outdoor_ride = ("cycl" in type_key.lower() and not is_indoor)
+                if is_outdoor_ride:
+                    print(f"Skipping outdoor ride (Strava handles): {a.get('activityName')}")
+                    continue
 
                 power_zones = {f"Z{i}": a.get(f"powerTimeInZone_{i}") for i in range(1, 8)}
                 hr_zones = {f"Z{i}": a.get(f"hrTimeInZone_{i}") for i in range(1, 6)}
