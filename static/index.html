@@ -119,6 +119,8 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .input-box:focus{border-color:var(--blue)}
 .input-box::placeholder{color:var(--text3)}
 .icon-btn2{width:42px;height:42px;border-radius:50%;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex-shrink:0;transition:all .15s}
+.icon-btn2.recording{background:rgba(224,82,82,0.2);border-color:var(--red);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 .send-btn{width:42px;height:42px;border-radius:50%;background:var(--blue);border:none;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex-shrink:0;transition:opacity .15s}
 .send-btn:active{opacity:.8}
 .send-btn:disabled{opacity:.3}
@@ -343,7 +345,10 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
   <div class="tab-content active" id="chatTab">
     <div class="chat-header">
       <div><h2>🚴 Coach</h2><p id="coachStatus">Bereit</p></div>
-      <button class="sync-pill" id="syncBtn" onclick="doSync()"><span id="syncIcon">↻</span> Sync</button>
+      <div style="display:flex;gap:8px">
+        <button onclick="clearChat()" style="padding:9px 14px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer">🗑️</button>
+        <button class="sync-pill" id="syncBtn" onclick="doSync()"><span id="syncIcon">↻</span> Sync</button>
+      </div>
     </div>
     <div class="qw">
       <button class="qp" onclick="askQuick('Analysiere mein letztes Training')">Letztes Training</button>
@@ -366,6 +371,7 @@ Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
       <textarea class="input-box" id="chatInput" placeholder="Schreib dem Coach..." rows="1"
         oninput="autoResize(this)"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+      <button class="icon-btn2" id="voiceBtn" onclick="toggleVoice()">🎙️</button>
       <button class="send-btn" id="sendBtn" onclick="sendMsg()">↑</button>
     </div>
   </div>
@@ -978,7 +984,7 @@ async function sendMsg(){
     const res=await fetch(`${serverUrl}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await res.json();
     removeTyping();
-    if(d.ok)addCoachMsg(d.reply);
+    if(d.ok){addCoachMsg(d.reply);speakText(d.reply);}
     else addCoachMsg(`❌ ${d.error}`);
   }catch(e){removeTyping();addCoachMsg(`❌ Verbindungsfehler: ${e.message}`);}
   document.getElementById('sendBtn').disabled=false;
@@ -1248,7 +1254,122 @@ async function loadWeeklyReview(){
   }
 }
 
-async function loadWeeklyReviewDash(){
+async // ═══ VOICE ═══
+let recognition = null;
+let isRecording = false;
+let ttsEnabled = true;
+
+function initVoice(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){
+    alert('Spracherkennung wird von diesem Browser nicht unterstützt. Bitte Chrome oder Safari nutzen.');
+    return null;
+  }
+  const r = new SpeechRecognition();
+  r.lang = 'de-DE';
+  r.continuous = false;
+  r.interimResults = true;
+
+  r.onstart = () => {
+    isRecording = true;
+    const btn = document.getElementById('voiceBtn');
+    btn.classList.add('recording');
+    btn.textContent = '⏹️';
+    document.getElementById('chatInput').placeholder = '🎙️ Spreche...';
+  };
+
+  r.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r=>r[0].transcript).join('');
+    document.getElementById('chatInput').value = transcript;
+    autoResize(document.getElementById('chatInput'));
+    // Wenn finale Erkennung → automatisch senden
+    if(e.results[e.results.length-1].isFinal){
+      stopVoice();
+      setTimeout(()=>sendMsg(), 300);
+    }
+  };
+
+  r.onerror = (e) => {
+    console.error('Voice error:', e.error);
+    stopVoice();
+    if(e.error === 'not-allowed'){
+      alert('Mikrofon-Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.');
+    }
+  };
+
+  r.onend = () => stopVoice();
+  return r;
+}
+
+function toggleVoice(){
+  if(isRecording){
+    stopVoice();
+  } else {
+    startVoice();
+  }
+}
+
+function startVoice(){
+  if(!recognition) recognition = initVoice();
+  if(!recognition) return;
+  try{
+    recognition.start();
+  }catch(e){
+    console.error(e);
+  }
+}
+
+function stopVoice(){
+  isRecording = false;
+  const btn = document.getElementById('voiceBtn');
+  btn.classList.remove('recording');
+  btn.textContent = '🎙️';
+  document.getElementById('chatInput').placeholder = 'Schreib dem Coach...';
+  try{ recognition?.stop(); }catch{}
+}
+
+function speakText(text){
+  if(!ttsEnabled) return;
+  if(!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+
+  // Text bereinigen — Markdown entfernen
+  const clean = text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/#{1,3} /g, '')
+    .replace(/[•\-] /g, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .trim();
+
+  // Alles vorlesen
+  const short = clean;
+
+  const utt = new SpeechSynthesisUtterance(short);
+  utt.lang = 'de-DE';
+  utt.rate = 1.05;
+  utt.pitch = 1.0;
+
+  // Deutsche Stimme bevorzugen
+  const voices = window.speechSynthesis.getVoices();
+  const deVoice = voices.find(v => v.lang.startsWith('de') && v.localService);
+  if(deVoice) utt.voice = deVoice;
+
+  window.speechSynthesis.speak(utt);
+}
+
+// Voices laden (async auf manchen Browsern)
+if(window.speechSynthesis){
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+function clearChat(){
+  if(!confirm('Chat-Verlauf löschen?')) return;
+  try{
+    await fetch(`${serverUrl}/clear-chat`,{method:'POST'});
+    document.getElementById('messages').innerHTML=`<div class="date-sep">Heute</div><div class="msg-coach"><div class="cb2">Chat geleert. Frischer Start! 🚴</div></div>`;
+  }catch(e){alert('Fehler: '+e.message);}
+}
   const el=document.getElementById('reviewBodyDash');
   if(!el)return;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--text2)"><div class="spin" style="width:18px;height:18px;border-width:2px"></div> Coach analysiert...</div>`;
