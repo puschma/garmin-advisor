@@ -1254,7 +1254,7 @@ async function loadWeeklyReview(){
   }
 }
 
-async // ═══ VOICE ═══
+// ═══ VOICE ═══
 let recognition = null;
 let isRecording = false;
 let ttsEnabled = true;
@@ -1363,13 +1363,15 @@ if(window.speechSynthesis){
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
-function clearChat(){
+async function clearChat(){
   if(!confirm('Chat-Verlauf löschen?')) return;
   try{
     await fetch(`${serverUrl}/clear-chat`,{method:'POST'});
     document.getElementById('messages').innerHTML=`<div class="date-sep">Heute</div><div class="msg-coach"><div class="cb2">Chat geleert. Frischer Start! 🚴</div></div>`;
   }catch(e){alert('Fehler: '+e.message);}
 }
+
+async function loadWeeklyReviewDash(){
   const el=document.getElementById('reviewBodyDash');
   if(!el)return;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--text2)"><div class="spin" style="width:18px;height:18px;border-width:2px"></div> Coach analysiert...</div>`;
