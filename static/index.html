@@ -83,33 +83,54 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 
 /* ── CHAT ── */
 .chat-header{padding:calc(var(--st) + 14px) 18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--bg)}
-.chat-header h2{font-size:20px;font-weight:800;letter-spacing:-0.3px}
+.chat-header h2{font-size:18px;font-weight:700;letter-spacing:-0.3px}
 .chat-header p{font-size:12px;color:var(--text2);margin-top:2px;font-family:var(--mono)}
 .sync-pill{display:flex;align-items:center;gap:7px;padding:9px 16px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
 .sync-pill.busy{color:var(--orange);border-color:rgba(245,166,35,0.3)}
-.messages{flex:1;overflow-y:auto;padding:8px 0;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch}
 
-/* Coach message — clean, no avatar */
-.msg-coach{padding:16px 20px 16px;animation:mi .2s ease}
+.messages{flex:1;overflow-y:auto;padding:0;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch}
+
+/* Coach message — exakt wie Claude */
+.msg-coach{padding:20px 20px 4px;animation:mi .2s ease;max-width:680px;width:100%;margin:0 auto}
 @keyframes mi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
-.cb2{font-size:15px;line-height:1.8;color:var(--text);white-space:pre-wrap}
-.cb2 strong{color:#fff;font-weight:700}
+.cb2{font-size:15px;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.cb2 strong{color:#fff;font-weight:600}
 
-/* User message */
-.msg-user{padding:8px 20px;display:flex;justify-content:flex-end;animation:mi .2s ease}
-.ub{background:var(--card2);border:1px solid var(--border);border-radius:18px;padding:11px 16px;color:var(--text);font-size:15px;line-height:1.6;max-width:82%}
+/* User message — rechts wie Claude */
+.msg-user{padding:20px 20px 4px;display:flex;justify-content:flex-end;animation:mi .2s ease;max-width:680px;width:100%;margin:0 auto}
+.ub{background:var(--card2);border:1px solid var(--border);border-radius:18px;padding:12px 16px;color:var(--text);font-size:15px;line-height:1.6;max-width:75%}
 .ub img{max-width:100%;border-radius:10px;margin-top:8px;display:block}
 
-.date-sep{text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;align-items:center;gap:10px;padding:12px 20px}
+.date-sep{text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;align-items:center;gap:10px;padding:16px 20px;max-width:680px;width:100%;margin:0 auto}
 .date-sep::before,.date-sep::after{content:'';flex:1;height:1px;background:var(--border2)}
 
-/* Typing indicator — minimal */
-.tw{padding:16px 20px;animation:mi .2s ease}
+/* Typing */
+.tw{padding:20px 20px 4px;max-width:680px;width:100%;margin:0 auto}
 .tdots{display:flex;gap:5px}
 .td{width:7px;height:7px;background:var(--text3);border-radius:50%;animation:tda 1.2s ease-in-out infinite}
 .td:nth-child(2){animation-delay:.2s}
 .td:nth-child(3){animation-delay:.4s}
 @keyframes tda{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(-4px);opacity:1}}
+
+/* Input area — wie Claude */
+.input-wrap{padding:12px 16px 8px;background:var(--bg);flex-shrink:0}
+.input-inner{max-width:680px;margin:0 auto;background:var(--card2);border:1px solid var(--border);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;transition:border-color .2s}
+.input-inner:focus-within{border-color:rgba(255,255,255,0.2)}
+.input-box{width:100%;background:none;border:none;color:var(--text);font-size:15px;outline:none;resize:none;max-height:200px;line-height:1.6;font-family:'Inter',sans-serif;-webkit-appearance:none}
+.input-box::placeholder{color:var(--text3)}
+.input-actions{display:flex;align-items:center;justify-content:space-between}
+.input-left{display:flex;gap:6px}
+.input-btn{width:34px;height:34px;border-radius:50%;background:none;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;color:var(--text2);transition:all .15s}
+.input-btn:active{background:var(--card)}
+.send-btn{width:34px;height:34px;border-radius:50%;background:var(--text);border:none;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:opacity .15s}
+.send-btn:disabled{opacity:0.3}
+.send-btn:active{opacity:.8}
+
+/* Quick prompts */
+.qw{padding:8px 16px 0;display:flex;gap:8px;overflow-x:auto;flex-shrink:0;max-width:712px;margin:0 auto;width:100%}
+.qw::-webkit-scrollbar{display:none}
+.qp{white-space:nowrap;padding:7px 14px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0;transition:all .15s}
+.qp:active{background:rgba(255,255,255,0.1);color:var(--text)}
 .qw{padding:10px 16px 0;display:flex;gap:8px;overflow-x:auto;flex-shrink:0}
 .qw::-webkit-scrollbar{display:none}
 .qp{white-space:nowrap;padding:8px 14px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0;transition:all .15s}
@@ -366,13 +387,19 @@ Ich habe Zugriff auf alle deine Garmin-Daten — Trainings, Laps, Watt, HRV, Sch
 Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
     </div>
     <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImg(this)">
-    <div class="input-area">
-      <button class="icon-btn2" onclick="document.getElementById('imgInput').click()">📎</button>
-      <textarea class="input-box" id="chatInput" placeholder="Schreib dem Coach..." rows="1"
-        oninput="autoResize(this)"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
-      <button class="icon-btn2" id="voiceBtn" onclick="toggleVoice()">🎙️</button>
-      <button class="send-btn" id="sendBtn" onclick="sendMsg()">↑</button>
+    <div class="input-wrap">
+      <div class="input-inner">
+        <textarea class="input-box" id="chatInput" placeholder="Nachricht an Coach..." rows="1"
+          oninput="autoResize(this)"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+        <div class="input-actions">
+          <div class="input-left">
+            <button class="input-btn" onclick="document.getElementById('imgInput').click()">📎</button>
+            <button class="input-btn" id="voiceBtn" onclick="toggleVoice()">🎙️</button>
+          </div>
+          <button class="send-btn" id="sendBtn" onclick="sendMsg()">↑</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -933,7 +960,8 @@ function scrollToBottom(msgs){
 function addCoachMsg(text, scroll=true){
   const msgs=document.getElementById('messages');
   const div=document.createElement('div'); div.className='msg-coach';
-  div.innerHTML=`<div class="cb2">${escHtml(text)}</div>`;
+  const id='msg-'+Date.now();
+  div.innerHTML=`<div class="cb2">${escHtml(text)}</div><button onclick="speakTextManual(this.dataset.text)" data-text="${text.replace(/"/g,'&quot;')}" style="margin-top:8px;padding:4px 10px;background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;float:right">🔊</button>`;
   msgs.appendChild(div);
   if(scroll) smartScroll(msgs);
 }
@@ -1257,110 +1285,121 @@ async function loadWeeklyReview(){
 // ═══ VOICE ═══
 let recognition = null;
 let isRecording = false;
-let ttsEnabled = true;
+let currentAudio = null;
 
-function initVoice(){
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SpeechRecognition){
-    alert('Spracherkennung wird von diesem Browser nicht unterstützt. Bitte Chrome oder Safari nutzen.');
-    return null;
-  }
-  const r = new SpeechRecognition();
+function initRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return null;
+  const r = new SR();
   r.lang = 'de-DE';
   r.continuous = false;
-  r.interimResults = true;
-
-  r.onstart = () => {
-    isRecording = true;
-    const btn = document.getElementById('voiceBtn');
-    btn.classList.add('recording');
-    btn.textContent = '⏹️';
-    document.getElementById('chatInput').placeholder = '🎙️ Spreche...';
-  };
-
+  r.interimResults = false;
   r.onresult = (e) => {
-    const transcript = Array.from(e.results).map(r=>r[0].transcript).join('');
-    document.getElementById('chatInput').value = transcript;
-    autoResize(document.getElementById('chatInput'));
-    // Wenn finale Erkennung → automatisch senden
-    if(e.results[e.results.length-1].isFinal){
-      stopVoice();
-      setTimeout(()=>sendMsg(), 300);
-    }
-  };
-
-  r.onerror = (e) => {
-    console.error('Voice error:', e.error);
+    const text = e.results[0][0].transcript;
     stopVoice();
-    if(e.error === 'not-allowed'){
-      alert('Mikrofon-Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.');
-    }
+    document.getElementById('chatInput').value = text;
+    autoResize(document.getElementById('chatInput'));
+    sendMsg();
   };
-
+  r.onerror = () => stopVoice();
   r.onend = () => stopVoice();
   return r;
 }
 
 function toggleVoice(){
-  if(isRecording){
-    stopVoice();
-  } else {
-    startVoice();
-  }
+  if(isRecording) stopVoice();
+  else startVoice();
 }
 
 function startVoice(){
-  if(!recognition) recognition = initVoice();
-  if(!recognition) return;
-  try{
-    recognition.start();
-  }catch(e){
-    console.error(e);
-  }
+  if(!recognition) recognition = initRecognition();
+  if(!recognition){ alert('Spracherkennung nicht verfügbar. Bitte Chrome nutzen.'); return; }
+  // Voice-Overlay anzeigen
+  showVoiceOverlay();
+  try{ recognition.start(); isRecording=true; }catch(e){ hideVoiceOverlay(); }
 }
 
 function stopVoice(){
-  isRecording = false;
-  const btn = document.getElementById('voiceBtn');
-  btn.classList.remove('recording');
-  btn.textContent = '🎙️';
-  document.getElementById('chatInput').placeholder = 'Schreib dem Coach...';
+  isRecording=false;
+  hideVoiceOverlay();
   try{ recognition?.stop(); }catch{}
 }
 
-function speakText(text){
-  if(!ttsEnabled) return;
-  if(!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-
-  // Text bereinigen — Markdown entfernen
-  const clean = text
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/#{1,3} /g, '')
-    .replace(/[•\-] /g, '')
-    .replace(/\n{2,}/g, '. ')
-    .replace(/\n/g, ' ')
-    .trim();
-
-  // Alles vorlesen
-  const short = clean;
-
-  const utt = new SpeechSynthesisUtterance(short);
-  utt.lang = 'de-DE';
-  utt.rate = 1.05;
-  utt.pitch = 1.0;
-
-  // Deutsche Stimme bevorzugen
-  const voices = window.speechSynthesis.getVoices();
-  const deVoice = voices.find(v => v.lang.startsWith('de') && v.localService);
-  if(deVoice) utt.voice = deVoice;
-
-  window.speechSynthesis.speak(utt);
+function showVoiceOverlay(){
+  let overlay = document.getElementById('voiceOverlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'voiceOverlay';
+    overlay.style.cssText = `position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px`;
+    overlay.innerHTML = `
+      <div style="font-size:15px;color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif">Spreche jetzt...</div>
+      <div id="voiceRings" style="position:relative;width:100px;height:100px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;width:100px;height:100px;border-radius:50%;background:rgba(79,142,247,0.15);animation:voiceRing 1.5s ease-in-out infinite"></div>
+        <div style="position:absolute;width:76px;height:76px;border-radius:50%;background:rgba(79,142,247,0.25);animation:voiceRing 1.5s ease-in-out infinite 0.2s"></div>
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:26px">🎙️</div>
+      </div>
+      <button onclick="stopVoice()" style="padding:12px 28px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Abbrechen</button>
+    `;
+    document.body.appendChild(overlay);
+    // CSS Animation
+    if(!document.getElementById('voiceStyle')){
+      const s = document.createElement('style');
+      s.id = 'voiceStyle';
+      s.textContent = `@keyframes voiceRing{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:0.6}}`;
+      document.head.appendChild(s);
+    }
+  }
+  overlay.style.display='flex';
 }
 
-// Voices laden (async auf manchen Browsern)
-if(window.speechSynthesis){
-  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+function hideVoiceOverlay(){
+  const o = document.getElementById('voiceOverlay');
+  if(o) o.style.display='none';
+}
+
+async function speakText(text){
+  // Stoppe laufende Wiedergabe
+  if(currentAudio){ currentAudio.pause(); currentAudio=null; }
+
+  // Kopfhörer-Check — automatisch vorlesen wenn verbunden
+  const autoSpeak = await isHeadphonesConnected();
+  if(!autoSpeak) return; // Nur bei Kopfhörern/Auto automatisch
+
+  await playTTS(text);
+}
+
+async function speakTextManual(text){
+  if(currentAudio){ currentAudio.pause(); currentAudio=null; return; }
+  await playTTS(text);
+}
+
+async function playTTS(text){
+  if(isDemo) return;
+  try{
+    const res = await fetch(`${serverUrl}/tts`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const d = await res.json();
+    if(!d.ok) return;
+    const audio = new Audio(`data:audio/mp3;base64,${d.audio}`);
+    currentAudio = audio;
+    audio.play();
+    audio.onended = () => { currentAudio=null; };
+  }catch(e){ console.error('TTS error:', e); }
+}
+
+async function isHeadphonesConnected(){
+  try{
+    if(!navigator.mediaDevices?.enumerateDevices) return false;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.some(d => d.kind === 'audiooutput' &&
+      (d.label.toLowerCase().includes('headphone') ||
+       d.label.toLowerCase().includes('bluetooth') ||
+       d.label.toLowerCase().includes('airpod') ||
+       d.label.toLowerCase().includes('car') ||
+       d.label.toLowerCase().includes('auto')));
+  }catch{ return false; }
 }
 
 async function clearChat(){
