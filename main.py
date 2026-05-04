@@ -1159,7 +1159,51 @@ def dashboard():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/weekly-review", methods=["POST"])
+@app.route("/tts", methods=["POST"])
+def tts():
+    """Google Text-to-Speech Endpoint."""
+    body = request.get_json() or {}
+    text = body.get("text", "")
+    if not text:
+        return jsonify({"ok": False, "error": "Kein Text"}), 400
+
+    api_key = os.environ.get("GOOGLE_TTS_KEY", "")
+    if not api_key:
+        return jsonify({"ok": False, "error": "GOOGLE_TTS_KEY fehlt"}), 500
+
+    # Markdown bereinigen
+    import re
+    clean = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    clean = re.sub(r'#{1,3} ', '', clean)
+    clean = re.sub(r'[•\-] ', '', clean)
+    clean = clean.strip()
+
+    try:
+        res = req.post(
+            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}",
+            json={
+                "input": {"text": clean},
+                "voice": {
+                    "languageCode": "de-DE",
+                    "name": "de-DE-Neural2-B",  # Natürliche männliche deutsche Stimme
+                    "ssmlGender": "MALE"
+                },
+                "audioConfig": {
+                    "audioEncoding": "MP3",
+                    "speakingRate": 1.05,
+                    "pitch": 0.0
+                }
+            },
+            timeout=10
+        )
+        data = res.json()
+        if "audioContent" in data:
+            return jsonify({"ok": True, "audio": data["audioContent"]})
+        return jsonify({"ok": False, "error": str(data)}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def weekly_review():
     """Generiert einen Wochenrückblick vom Coach."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
