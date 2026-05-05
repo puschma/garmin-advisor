@@ -988,7 +988,7 @@ function removeTyping(){const t=document.getElementById('typing');if(t)t.remove(
 function handleImg(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
-  reader.onload=e=>{pendingImage=e.target.result;document.getElementById('chatInput').placeholder='Bild bereit…';document.querySelector('.icon-btn2').textContent='✅';};
+  reader.onload=e=>{pendingImage=e.target.result;document.getElementById('chatInput').placeholder='Bild bereit…';document.querySelector('#imgInput + div .input-btn, .input-btn')?.textContent && (document.querySelectorAll('.input-btn')[0].textContent='✅');};
   reader.readAsDataURL(file);
 }
 
@@ -1004,7 +1004,8 @@ async function sendMsg(){
   const imgData=pendingImage?pendingImage.split(',')[1]:null;
   const imgType=pendingImage?pendingImage.split(';')[0].split(':')[1]:null;
   pendingImage=null;
-  document.querySelector('.icon-btn2').textContent='📎';
+  const imgBtn = document.querySelectorAll('.input-btn')[0];
+  if(imgBtn) imgBtn.textContent='📎';
   if(isDemo){showTyping();await new Promise(r=>setTimeout(r,1200));removeTyping();addCoachMsg('Im Demo-Modus kein echtes Coaching.');document.getElementById('sendBtn').disabled=false;return;}
   showTyping();
   try{
@@ -1013,7 +1014,7 @@ async function sendMsg(){
     const res=await fetch(`${serverUrl}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await res.json();
     removeTyping();
-    if(d.ok){addCoachMsg(d.reply);speakText(d.reply);}
+    if(d.ok){addCoachMsg(d.reply);try{speakText(d.reply);}catch(e){console.error('TTS:',e);}}
     else addCoachMsg(`❌ ${d.error}`);
   }catch(e){removeTyping();addCoachMsg(`❌ Verbindungsfehler: ${e.message}`);}
   document.getElementById('sendBtn').disabled=false;
