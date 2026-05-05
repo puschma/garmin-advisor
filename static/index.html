@@ -100,10 +100,12 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .cb2 p:last-child{margin-bottom:0}
 .cb2 ul,.cb2 ol{padding-left:22px;margin-bottom:14px}
 .cb2 li{margin-bottom:6px;line-height:1.7}
-.cb2 table{width:100%;border-collapse:collapse;margin-bottom:14px}
-.cb2 th{padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);color:var(--text2);font-weight:600;font-size:12px;text-transform:uppercase}
-.cb2 td{padding:8px 12px;border-bottom:1px solid var(--border2)}
-.cb2 tr:last-child td{border-bottom:none}
+.cb2 table{display:none} /* Tabellen verstecken — werden als Cards gerendert */
+.cb2 .mob-table{margin-bottom:14px}
+.cb2 .mob-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border2);font-size:15px}
+.cb2 .mob-row:last-child{border-bottom:none}
+.cb2 .mob-key{color:var(--text2);font-size:14px}
+.cb2 .mob-val{font-weight:600;text-align:right}
 .cb2 h3{font-size:16px;font-weight:700;margin:16px 0 8px}
 
 /* User message — rechts wie Claude */
@@ -380,13 +382,6 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
         <button onclick="clearChat()" style="padding:9px 14px;background:var(--card2);border:1px solid var(--border);border-radius:100px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer">🗑️</button>
         <button class="sync-pill" id="syncBtn" onclick="doSync()"><span id="syncIcon">↻</span> Sync</button>
       </div>
-    </div>
-    <div class="qw">
-      <button class="qp" onclick="askQuick('Analysiere mein letztes Training')">Letztes Training</button>
-      <button class="qp" onclick="askQuick('Was soll ich heute trainieren?')">Heute</button>
-      <button class="qp" onclick="askQuick('Wie ist mein Fortschritt Richtung 4 W/kg?')">Fortschritt</button>
-      <button class="qp" onclick="askQuick('Zeig mir meine letzten SST-Einheiten im Vergleich')">SST Vergleich</button>
-      <button class="qp" onclick="askQuick('Wie ist meine aktuelle Erholung?')">Erholung</button>
     </div>
     <div class="messages" id="messages">
       <div class="date-sep">Heute</div>
@@ -969,24 +964,30 @@ function scrollToBottom(msgs){
 
 function renderMarkdown(text){
   let html = text
-    // Tabellen
-    .replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/gm, (match, header, rows) => {
-      const ths = header.split('|').filter(s=>s.trim()).map(s=>`<th>${s.trim()}</th>`).join('');
-      const trs = rows.trim().split('\n').map(row => {
-        const tds = row.split('|').filter(s=>s.trim()).map(s=>`<td>${s.trim()}</td>`).join('');
-        return `<tr>${tds}</tr>`;
-      }).join('');
-      return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+    // Tabellen → Mobile Cards
+    .replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/gm, (match, header, rows) => {
+      const headers = header.split('|').map(s=>s.trim()).filter(Boolean);
+      const dataRows = rows.trim().split('\n').map(row =>
+        row.split('|').map(s=>s.trim()).filter(Boolean)
+      );
+      let cards = '<div class="mob-table">';
+      dataRows.forEach(cells => {
+        cards += '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px">';
+        cells.forEach((cell, i) => {
+          if(headers[i]) cards += `<div class="mob-row"><span class="mob-key">${headers[i]}</span><span class="mob-val">${cell}</span></div>`;
+        });
+        cards += '</div>';
+      });
+      cards += '</div>';
+      return cards;
     })
     // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // H3
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    // H2
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    // H3/H2
+    .replace(/^#{2,3} (.+)$/gm, '<h3>$1</h3>')
     // Listen
     .replace(/^[•\-\*] (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/gs, match => `<ul>${match}</ul>`)
+    .replace(/(<li>.*?<\/li>\n?)+/gs, m => `<ul>${m}</ul>`)
     // Absätze
     .replace(/\n{2,}/g, '</p><p>')
     .replace(/\n/g, '<br>');
