@@ -706,8 +706,18 @@ function renderDashboard(){
   </div>`;
   if(health.length){
     html+=`<div class="health-grid">
-      <div class="health-box"><div class="hlbl">SCHLAF HEUTE</div><div class="hnum" style="color:var(--blue)">${h.sleep_duration||'--'}<span class="hunit">h</span></div><div class="hsub">Score ${h.sleep_score||'--'}/100</div></div>
-      <div class="health-box" onclick="openStatDetail('hrv')" style="cursor:pointer"><div class="hlbl">HRV · RUHEPULS</div><div class="hnum" style="color:${h.hrv>55?'var(--green)':h.hrv>40?'var(--orange)':'var(--red)'}">${h.hrv||'--'}<span class="hunit">ms</span></div><div class="hsub">${h.resting_hr||'--'} bpm Ruhepuls ›</div></div>
+      <div class="health-box" onclick="openSleepDetail()" style="cursor:pointer">
+        <div class="hlbl">SCHLAF HEUTE</div>
+        <div class="hnum" style="color:var(--blue)">${h.sleep_duration||'--'}<span class="hunit">h</span></div>
+        <div class="hsub">Score ${h.sleep_score||'--'}/100 ›</div>
+        ${h.sleep_ai_insight?`<div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5;border-top:1px solid var(--border2);padding-top:8px">${h.sleep_ai_insight.split('.')[0]}.</div>`:''}
+      </div>
+      <div class="health-box" onclick="openStatDetail('hrv')" style="cursor:pointer">
+        <div class="hlbl">HRV · RUHEPULS</div>
+        <div class="hnum" style="color:${h.hrv>55?'var(--green)':h.hrv>40?'var(--orange)':'var(--red)'}">${h.hrv||'--'}<span class="hunit">ms</span></div>
+        <div class="hsub">${h.resting_hr||'--'} bpm ›</div>
+        ${h.hrv_status?`<div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5;border-top:1px solid var(--border2);padding-top:8px">${h.hrv_status}</div>`:''}
+      </div>
     </div>`;
   }
   if(activities.length){
@@ -722,6 +732,7 @@ function renderDashboard(){
           ${a.avg_hr?`<span class="act-stat">Ø <b>${a.avg_hr}</b> bpm</span>`:''}
           ${a.training_load?`<span class="act-stat">Load <b>${Math.round(a.training_load)}</b></span>`:''}
         </div>
+        ${a.ai_short?`<div style="font-size:13px;color:var(--text2);margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);line-height:1.5">${a.ai_short}</div>`:''}
       </div>`;
     });
   }
@@ -1447,6 +1458,86 @@ async function loadWeeklyReviewDash(){
     const d=await res.json();
     el.innerHTML=d.ok?`<div style="font-size:14px;line-height:1.75;color:var(--text);white-space:pre-wrap">${escHtml(d.review)}</div>`:`<span style="color:var(--red)">❌ ${d.error}</span>`;
   }catch(e){el.innerHTML=`<span style="color:var(--red)">❌ ${e.message}</span>`;}
+}
+
+function openSleepDetail(){
+  const health = dashData.health || [];
+  if(!health.length) return;
+  const h = health[0];
+  const prev7 = health.slice(0,7);
+  const avgDur = (prev7.reduce((s,x)=>s+(x.sleep_duration||0),0)/prev7.length).toFixed(1);
+  const avgScore = Math.round(prev7.filter(x=>x.sleep_score).reduce((s,x)=>s+x.sleep_score,0)/prev7.filter(x=>x.sleep_score).length)||'--';
+
+  // SVG Chart für 7-Tage Schlaf
+  function buildSleepChart(data){
+    const W=320, H=100, pad={t:10,r:10,b:24,l:30};
+    const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+    const vals=data.map(d=>d.sleep_duration||0);
+    const maxV=Math.max(...vals,8);
+    const reversed=[...data].reverse();
+    function x(i){return pad.l+(i/(reversed.length-1||1))*cW;}
+    function y(v){return pad.t+cH-((v/maxV)*cH);}
+    const bars=reversed.map((d,i)=>{
+      const bw=cW/reversed.length*0.6;
+      const bx=x(i)-bw/2;
+      const by=y(d.sleep_duration||0);
+      const bh=cH-(by-pad.t);
+      const isToday=i===reversed.length-1;
+      return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,bh).toFixed(1)}"
+        fill="${isToday?'var(--blue)':'rgba(79,142,247,0.35)'}" rx="3"/>
+        <text x="${x(i).toFixed(1)}" y="${H-4}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="9" font-family="var(--mono)">${new Date(d.date).toLocaleDateString('de-DE',{weekday:'short'})}</text>`;
+    }).join('');
+    const ref7=`<line x1="${pad.l}" y1="${y(7).toFixed(1)}" x2="${pad.l+cW}" y2="${y(7).toFixed(1)}" stroke="rgba(79,142,247,0.3)" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="${pad.l-2}" y="${y(7).toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="9" font-family="var(--mono)">7h</text>`;
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100px">${ref7}${bars}</svg>`;
+  }
+
+  document.getElementById('sheetContent').innerHTML=`
+    <div class="sheet-title">😴 Schlaf</div>
+    <div class="sheet-type" style="color:var(--blue)">${h.date} · Score ${h.sleep_score||'--'}/100</div>
+
+    ${h.sleep_ai_insight?`<div style="padding:14px;background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:14px;font-size:14px;line-height:1.65;color:var(--text);margin-bottom:16px">${h.sleep_ai_insight}</div>`:''}
+
+    <div style="margin-bottom:16px">${buildSleepChart(prev7)}</div>
+
+    <div class="dsec"><div class="dsec-title">Heutige Nacht</div>
+      <div class="drow"><span class="dkey">Gesamtschlaf</span><span class="dval" style="color:var(--blue)">${h.sleep_duration||'--'}h</span></div>
+      <div class="drow"><span class="dkey">Tiefschlaf</span><span class="dval">${h.deep_sleep||'--'}h</span></div>
+      <div class="drow"><span class="dkey">REM-Schlaf</span><span class="dval">${h.rem_sleep||'--'}h</span></div>
+      <div class="drow"><span class="dkey">Leichtschlaf</span><span class="dval">${h.light_sleep||'--'}h</span></div>
+      <div class="drow"><span class="dkey">Wachphasen</span><span class="dval">${h.awake_time||'--'}h</span></div>
+      <div class="drow"><span class="dkey">Schlaf-Score</span><span class="dval" style="color:${h.sleep_score>=80?'var(--green)':h.sleep_score>=60?'var(--orange)':'var(--red)'}">${h.sleep_score||'--'}/100</span></div>
+    </div>
+
+    <div class="dsec"><div class="dsec-title">Körper über Nacht</div>
+      <div class="drow"><span class="dkey">HRV</span><span class="dval" style="color:var(--cyan)">${h.hrv||'--'} ms</span></div>
+      <div class="drow"><span class="dkey">Ruhepuls</span><span class="dval">${h.resting_hr||'--'} bpm</span></div>
+      <div class="drow"><span class="dkey">Ø Herzrate Nacht</span><span class="dval">${h.avg_night_hr||'--'} bpm</span></div>
+      <div class="drow"><span class="dkey">Ø Atemfrequenz</span><span class="dval">${h.avg_respiration||'--'} brpm</span></div>
+      <div class="drow"><span class="dkey">Niedrigste Atmung</span><span class="dval">${h.lowest_respiration||'--'} brpm</span></div>
+    </div>
+
+    <div class="dsec"><div class="dsec-title">7-Tage Übersicht</div>
+      <div class="drow"><span class="dkey">Ø Schlafdauer</span><span class="dval" style="color:${avgDur>=7?'var(--green)':'var(--orange)'}">${avgDur}h</span></div>
+      <div class="drow"><span class="dkey">Ø Score</span><span class="dval">${avgScore}/100</span></div>
+      ${prev7.map(d=>`<div class="drow">
+        <span class="dkey">${new Date(d.date).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric'})}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:60px;height:4px;background:var(--border2);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${Math.min(100,(d.sleep_duration||0)/9*100)}%;background:var(--blue);border-radius:2px"></div>
+          </div>
+          <span class="dval" style="font-size:13px">${d.sleep_duration||'--'}h</span>
+        </div>
+      </div>`).join('')}
+    </div>
+
+    <div class="sheet-actions">
+      <button class="sheet-btn secondary" onclick="closePlanDaySheet()">Schliessen</button>
+      <button class="sheet-btn primary" onclick="askQuick('Analysiere meinen Schlaf der letzten Woche');closePlanDaySheet();switchTab('chat')">Coach fragen</button>
+    </div>`;
+
+  document.getElementById('planDaySheet').classList.remove('hidden');
+  pushHistory();
 }
 
 function openPlanDay(date){
