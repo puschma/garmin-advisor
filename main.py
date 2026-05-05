@@ -1229,7 +1229,15 @@ def debug_db():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/init", methods=["POST"])
+@app.route("/setup")
+def setup():
+    try:
+        init_db()
+        return jsonify({"ok": True, "msg": "DB initialisiert"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/init", methods=["POST", "GET"])
 def init():
     try:
         init_db()
