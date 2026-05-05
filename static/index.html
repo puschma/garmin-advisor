@@ -185,7 +185,23 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .act-stat{font-size:13px;color:var(--text2);font-family:var(--mono)}
 .act-stat b{color:var(--text);font-weight:600}
 
-/* ── PLAN TAB ── */
+/* ── KALENDER ── */
+.cal-stats{display:flex;gap:8px;padding:0 16px 12px;overflow-x:auto}
+.cal-stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;white-space:nowrap;flex-shrink:0}
+.cal-stat-num{font-size:18px;font-weight:800;line-height:1}
+.cal-stat-lbl{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:3px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 12px}
+.cal-dow{text-align:center;font-size:10px;font-weight:700;color:var(--text3);font-family:var(--mono);padding:6px 0}
+.cal-day{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;transition:opacity .15s;position:relative;border:1px solid transparent}
+.cal-day:active{opacity:.7}
+.cal-day.today{border-color:var(--blue)}
+.cal-day.empty{opacity:0;pointer-events:none}
+.cal-day.future{opacity:0.3;pointer-events:none}
+.cal-day-num{font-size:12px;font-weight:600;line-height:1}
+.cal-day-dot{width:5px;height:5px;border-radius:50%}
+.cal-legend{display:flex;gap:12px;padding:12px 16px 0;flex-wrap:wrap}
+.cal-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.cal-legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 #planTab{overflow-y:auto;-webkit-overflow-scrolling:touch}
 .plan-header{padding:calc(var(--st) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--border)}
 .plan-header h2{font-size:20px;font-weight:800}
@@ -408,19 +424,20 @@ Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
     </div>
   </div>
 
-  <!-- PLAN TAB -->
+  <!-- KALENDER TAB -->
   <div class="tab-content" id="planTab">
-    <div class="plan-header">
-      <div><h2>📅 Trainingsplan</h2><p id="planStatus">Vom Coach erstellt</p></div>
-      <button class="gen-btn" onclick="openPlanModal()">+ Plan</button>
-    </div>
-    <div id="planContent" style="overflow-y:auto;flex:1;padding-bottom:20px">
-      <div class="no-plan">
-        <div class="no-plan-icon">📋</div>
-        <h3>Noch kein Plan</h3>
-        <p>Der Coach erstellt dir einen personalisierten Trainingsplan basierend auf deinen Daten und Zielen.</p>
-        <button class="btn-primary" onclick="openPlanModal()">Plan erstellen</button>
+    <div class="dash-header">
+      <div>
+        <h2>🗓️ Kalender</h2>
+        <p id="calMonthLabel"></p>
       </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="changeMonth(-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:50%;width:34px;height:34px;color:var(--text2);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
+        <button onclick="changeMonth(1)" style="background:var(--card2);border:1px solid var(--border);border-radius:50%;width:34px;height:34px;color:var(--text2);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">›</button>
+      </div>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding-bottom:20px;-webkit-overflow-scrolling:touch" id="calContent">
+      <div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:14px">Sync drücken um Daten zu laden</div>
     </div>
   </div>
 
@@ -437,7 +454,7 @@ Drück <strong>Sync</strong> um die neuesten Daten zu laden. 🚴</div></div>
 
   <div class="tabbar">
     <button class="tabb active" id="tab-chat" onclick="switchTab('chat')"><span class="ti">💬</span>Coach</button>
-    <button class="tabb" id="tab-plan" onclick="switchTab('plan')"><span class="ti">📅</span>Plan</button>
+    <button class="tabb" id="tab-plan" onclick="switchTab('plan')"><span class="ti">🗓️</span>Kalender</button>
     <button class="tabb" id="tab-dash" onclick="switchTab('dash')"><span class="ti">📊</span>Übersicht</button>
   </div>
 
@@ -655,6 +672,7 @@ function switchTab(t){
   document.querySelectorAll('.tabb').forEach(x=>x.classList.remove('active'));
   document.getElementById(t+'Tab').classList.add('active');
   document.getElementById('tab-'+t).classList.add('active');
+  if(t==='plan' && dashData.activities?.length) renderCalendar();
 }
 
 // ═══ SYNC ═══
@@ -679,7 +697,7 @@ async function doSync(){
 // ═══ DASHBOARD ═══
 async function loadDashboard(){
   if(isDemo){renderDemoDash();return;}
-  try{const res=await fetch(`${serverUrl}/dashboard`,{method:'POST'});const d=await res.json();if(d.ok){dashData=d;renderDashboard();}}catch(e){console.error(e);}
+  try{const res=await fetch(`${serverUrl}/dashboard`,{method:'POST'});const d=await res.json();if(d.ok){dashData=d;renderDashboard();if(document.getElementById('planTab').classList.contains('active'))renderCalendar();}}catch(e){console.error(e);}
 }
 
 function renderDashboard(){
@@ -1536,6 +1554,163 @@ function openSleepDetail(){
       <button class="sheet-btn primary" onclick="askQuick('Analysiere meinen Schlaf der letzten Woche');closePlanDaySheet();switchTab('chat')">Coach fragen</button>
     </div>`;
 
+  document.getElementById('planDaySheet').classList.remove('hidden');
+  pushHistory();
+}
+
+// ═══ KALENDER ═══
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+
+function changeMonth(dir){
+  calMonth += dir;
+  if(calMonth > 11){calMonth=0;calYear++;}
+  if(calMonth < 0){calMonth=11;calYear--;}
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const acts = dashData.activities || [];
+  const health = dashData.health || [];
+  const ftp = profile.ftp || 210;
+
+  const monthName = new Date(calYear, calMonth).toLocaleDateString('de-DE',{month:'long',year:'numeric'});
+  document.getElementById('calMonthLabel').textContent = monthName;
+
+  // Aktivitäten und Health nach Datum indexieren
+  const actByDate = {};
+  acts.forEach(a => {
+    if(!actByDate[a.date]) actByDate[a.date] = [];
+    actByDate[a.date].push(a);
+  });
+  const healthByDate = {};
+  health.forEach(h => { healthByDate[h.date] = h; });
+
+  // Monatsstats
+  const monthActs = acts.filter(a => {
+    const d = new Date(a.date);
+    return d.getFullYear()===calYear && d.getMonth()===calMonth;
+  });
+  const monthMins = monthActs.reduce((s,a)=>s+(a.duration_min||0),0);
+  const monthLoad = Math.round(monthActs.reduce((s,a)=>s+(a.training_load||0),0));
+  const avgHrv = health.filter(h=>{
+    const d=new Date(h.date);
+    return d.getFullYear()===calYear && d.getMonth()===calMonth && h.hrv;
+  });
+  const avgHrvVal = avgHrv.length ? Math.round(avgHrv.reduce((s,h)=>s+h.hrv,0)/avgHrv.length) : '--';
+
+  // Intensitätsfarbe
+  function intensityColor(acts){
+    if(!acts||!acts.length) return null;
+    const a = acts[0];
+    if(!a.avg_power) return 'rgba(255,255,255,0.15)';
+    const pct = a.avg_power/ftp*100;
+    if(pct < 76) return '#2ec27e';
+    if(pct < 91) return '#f5a623';
+    if(pct < 106) return '#e07832';
+    return '#e05252';
+  }
+
+  // Kalender aufbauen
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // Mo=0
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+
+  let html = `
+    <div class="cal-stats">
+      <div class="cal-stat"><div class="cal-stat-num" style="color:var(--blue)">${monthActs.length}</div><div class="cal-stat-lbl">EINHEITEN</div></div>
+      <div class="cal-stat"><div class="cal-stat-num" style="color:var(--orange)">${Math.floor(monthMins/60)}h ${monthMins%60}m</div><div class="cal-stat-lbl">TRAININGSZEIT</div></div>
+      <div class="cal-stat"><div class="cal-stat-num" style="color:var(--cyan)">${avgHrvVal}</div><div class="cal-stat-lbl">Ø HRV</div></div>
+      <div class="cal-stat"><div class="cal-stat-num" style="color:var(--orange)">${monthLoad}</div><div class="cal-stat-lbl">ATL GESAMT</div></div>
+    </div>
+    <div class="cal-grid">
+      ${['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+  `;
+
+  // Leere Zellen am Anfang
+  for(let i=0;i<startOffset;i++) html+=`<div class="cal-day empty"></div>`;
+
+  for(let day=1;day<=daysInMonth;day++){
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday = dateStr === today;
+    const isFuture = new Date(dateStr) > now;
+    const dayActs = actByDate[dateStr] || [];
+    const dayHealth = healthByDate[dateStr];
+    const color = intensityColor(dayActs);
+    const isOutdoor = dayActs.some(a => a.raw && (typeof a.raw === 'object' ? a.raw.source==='strava' : a.raw?.includes('strava')));
+    const icon = dayActs.length ? (isOutdoor?'🌳':'⚡') : '';
+
+    let bg = 'var(--card2)';
+    if(dayActs.length && color) bg = color+'22';
+
+    html += `<div class="cal-day${isToday?' today':''}${isFuture?' future':''}"
+      style="background:${bg}"
+      onclick="${dayActs.length||dayHealth?`openCalDay('${dateStr}')`:''}"
+    >
+      <div class="cal-day-num" style="color:${isToday?'var(--blue)':'var(--text)'}">${day}</div>
+      ${dayActs.length?`<div class="cal-day-dot" style="background:${color}"></div>`:''}
+      ${dayHealth&&dayHealth.sleep_score?`<div style="font-size:8px;color:var(--text3);font-family:var(--mono)">${dayHealth.sleep_score}</div>`:''}
+    </div>`;
+  }
+
+  html += `</div>
+    <div class="cal-legend">
+      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#2ec27e"></div>Z2 Grundlage</div>
+      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#f5a623"></div>SST/Tempo</div>
+      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#e07832"></div>Schwelle</div>
+      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#e05252"></div>VO2max</div>
+    </div>`;
+
+  document.getElementById('calContent').innerHTML = html;
+}
+
+function openCalDay(dateStr){
+  const acts = (dashData.activities||[]).filter(a=>a.date===dateStr);
+  const health = (dashData.health||[]).find(h=>h.date===dateStr);
+  const ftp = profile.ftp||210;
+
+  const d = new Date(dateStr);
+  const dayLabel = d.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'});
+
+  let content = `<div class="sheet-title">${dayLabel}</div>`;
+
+  if(acts.length){
+    acts.forEach(a=>{
+      const pct = a.avg_power?Math.round(a.avg_power/ftp*100):null;
+      content += `<div class="dsec" style="margin-top:16px">
+        <div class="dsec-title">${a.name||'Training'}</div>
+        <div class="drow"><span class="dkey">Dauer</span><span class="dval">${a.duration_min}min</span></div>
+        ${a.avg_power?`<div class="drow"><span class="dkey">Ø Leistung</span><span class="dval" style="color:var(--orange)">${a.avg_power}W${pct?` (${pct}% FTP)`:''}</span></div>`:''}
+        ${a.norm_power?`<div class="drow"><span class="dkey">Norm. Leistung</span><span class="dval">${Math.round(a.norm_power)}W</span></div>`:''}
+        ${a.avg_hr?`<div class="drow"><span class="dkey">Ø Herzrate</span><span class="dval">${a.avg_hr} bpm</span></div>`:''}
+        ${a.training_load?`<div class="drow"><span class="dkey">Training Load</span><span class="dval">${Math.round(a.training_load)}</span></div>`:''}
+        ${a.ai_insight?`<div style="padding:12px 16px;font-size:13px;color:var(--text2);line-height:1.65;border-top:1px solid var(--border2)">${a.ai_insight}</div>`:''}
+      </div>`;
+    });
+  }
+
+  if(health){
+    content += `<div class="dsec" style="margin-top:12px">
+      <div class="dsec-title">Nacht zuvor</div>
+      <div class="drow"><span class="dkey">Schlaf</span><span class="dval">${health.sleep_duration||'--'}h · Score ${health.sleep_score||'--'}</span></div>
+      <div class="drow"><span class="dkey">HRV</span><span class="dval" style="color:var(--cyan)">${health.hrv||'--'} ms</span></div>
+      <div class="drow"><span class="dkey">Ruhepuls</span><span class="dval">${health.resting_hr||'--'} bpm</span></div>
+      ${health.deep_sleep?`<div class="drow"><span class="dkey">Tiefschlaf</span><span class="dval">${health.deep_sleep}h</span></div>`:''}
+    </div>`;
+  }
+
+  if(!acts.length && !health){
+    content += `<div style="text-align:center;padding:40px 20px;color:var(--text3);font-size:14px">Kein Training · Ruhetag</div>`;
+  }
+
+  content += `<div class="sheet-actions">
+    <button class="sheet-btn secondary" onclick="closePlanDaySheet()">Schliessen</button>
+    ${acts.length?`<button class="sheet-btn primary" onclick="askQuick('Analysiere mein Training vom ${dateStr}');closePlanDaySheet();switchTab(\'chat\')">Coach fragen</button>`:''}
+  </div>`;
+
+  document.getElementById('sheetContent').innerHTML = content;
   document.getElementById('planDaySheet').classList.remove('hidden');
   pushHistory();
 }
