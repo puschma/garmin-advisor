@@ -59,11 +59,28 @@ def init_db():
                     sleep_duration FLOAT,
                     deep_sleep FLOAT,
                     rem_sleep FLOAT,
+                    light_sleep FLOAT,
+                    awake_time FLOAT,
                     sleep_score INT,
+                    sleep_score_feedback TEXT,
                     hrv INT,
+                    hrv_status TEXT,
                     resting_hr INT,
+                    avg_night_hr INT,
+                    avg_respiration FLOAT,
+                    lowest_respiration FLOAT,
+                    highest_respiration FLOAT,
+                    stress_score INT,
+                    body_battery_start INT,
+                    body_battery_end INT,
+                    sleep_ai_insight TEXT,
+                    hrv_ai_insight TEXT,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
+
+                -- Neue Spalten zu activities hinzufügen falls nicht vorhanden
+                ALTER TABLE activities ADD COLUMN IF NOT EXISTS ai_insight TEXT;
+                ALTER TABLE activities ADD COLUMN IF NOT EXISTS ai_short TEXT;
 
                 CREATE TABLE IF NOT EXISTS chat_messages (
                     id SERIAL PRIMARY KEY,
@@ -641,6 +658,16 @@ def sync_activities(client, days=30):
     start = (today - timedelta(days=days)).isoformat()
     activities = client.get_activities_by_date(start, today.isoformat()) or []
 
+    # FTP für AI Insights
+    ftp = 210
+    try:
+        with get_db() as conn_p:
+            with conn_p.cursor(row_factory=dict_row) as cur_p:
+                cur_p.execute("SELECT data FROM profile WHERE id=1")
+                r = cur_p.fetchone()
+                if r and r["data"]: ftp = r["data"].get("ftp", 210)
+    except: pass
+
     saved = 0
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -705,11 +732,26 @@ def sync_activities(client, days=30):
                     json.dumps({k: a.get(k) for k in ["activityName","duration","avgPower","normPower","averageHR"]})
                 ))
                 saved += 1
+
+                # AI Insight für neue Aktivitäten generieren
+                api_key = os.environ.get("ANTHROPIC_API_KEY","")
+                if api_key:
+                    try:
+                        act_data = {
+                            "name": a.get("activityName"), "duration_min": round((a.get("duration") or 0)/60),
+                            "avg_power": a.get("avgPower"), "norm_power": a.get("normPower"),
+                            "avg_hr": a.get("averageHR"), "aerobic_te": a.get("aerobicTrainingEffect"),
+                            "laps": laps
+                        }
+                        insight, short = generate_activity_insight(act_data, ftp, api_key)
+                        if insight:
+                            cur.execute("UPDATE activities SET ai_insight=%s, ai_short=%s WHERE id=%s",
+                                       (insight, short, aid))
+                    except Exception as e:
+                        print(f"AI insight error: {e}")
         conn.commit()
     print(f"✅ {saved} neue Aktivitäten gespeichert")
     return saved
-
-def fetch_hrv_for_date(client, d):
     """Holt HRV für ein Datum — probiert mehrere Methoden."""
     # Methode 1: get_hrv_data
     try:
@@ -746,9 +788,20 @@ def fetch_hrv_for_date(client, d):
     return None
 
 def sync_health(client, days=30):
-    """Holt Schlaf/HRV und speichert in DB."""
+    """Holt Schlaf/HRV mit allen Feldern und generiert AI Insights."""
     today = date.today()
     saved = 0
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    avg_hrv_7d = 0
+    try:
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT AVG(hrv)::int as avg FROM health_data WHERE hrv IS NOT NULL AND date >= NOW() - INTERVAL '7 days'")
+                r = cur.fetchone()
+                avg_hrv_7d = r["avg"] if r and r["avg"] else 0
+    except: pass
+
     with get_db() as conn:
         with conn.cursor() as cur:
             for i in range(days):
@@ -758,49 +811,75 @@ def sync_health(client, days=30):
                     dto = raw.get("dailySleepDTO", {})
                     hrv_s = raw.get("hrvSummary", {})
                     scores = dto.get("sleepScores", {})
+
                     score = None
                     if isinstance(scores.get("overall"), dict):
                         score = scores["overall"].get("value")
                     elif scores.get("totalScore"):
                         score = scores["totalScore"]
 
-                    # HRV: alle möglichen Felder probieren
-                    hrv = (hrv_s.get("lastNight")
-                        or hrv_s.get("lastNightAvg")
-                        or hrv_s.get("lastNight5MinHigh"))
-
-                    # Falls kein HRV aus Schlaf → separater Endpoint
+                    hrv = (hrv_s.get("lastNight") or hrv_s.get("lastNightAvg") or hrv_s.get("lastNight5MinHigh"))
                     if not hrv or float(hrv) <= 0:
                         hrv = fetch_hrv_for_date(client, d)
                     else:
                         hrv = round(float(hrv))
 
-                    # Ruhepuls: liegt im raw root, nicht im dailySleepDTO
-                    resting_hr = (raw.get("restingHeartRate")
-                        or dto.get("restingHeartRate"))
+                    resting_hr = raw.get("restingHeartRate") or dto.get("restingHeartRate")
                     if not resting_hr:
                         try:
                             stats = client.get_stats(d)
                             resting_hr = stats.get("restingHeartRate")
-                        except Exception as e:
-                            print(f"get_stats {d}: {e}")
+                        except: pass
 
                     dur = to_hours(dto.get("sleepTimeSeconds"))
+                    deep = to_hours(dto.get("deepSleepSeconds"))
+                    rem = to_hours(dto.get("remSleepSeconds"))
+                    light = to_hours(dto.get("lightSleepSeconds"))
+                    awake = to_hours(dto.get("awakeSleepSeconds"))
+                    avg_night_hr = dto.get("avgHeartRate")
+                    avg_resp = dto.get("averageRespirationValue")
+                    low_resp = dto.get("lowestRespirationValue")
+                    high_resp = dto.get("highestRespirationValue")
+                    hrv_status = hrv_s.get("hrvStatus")
+                    score_feedback = dto.get("sleepScoreFeedback")
+
                     if dur > 0:
+                        health_row = {
+                            "sleep_duration": dur, "deep_sleep": deep, "rem_sleep": rem,
+                            "light_sleep": light, "hrv": hrv, "resting_hr": resting_hr,
+                            "sleep_score": score, "avg_respiration": avg_resp
+                        }
+
+                        sleep_insight = None
+                        if i <= 1 and api_key:
+                            sleep_insight = generate_sleep_insight(health_row, avg_hrv_7d, api_key)
+                            if sleep_insight:
+                                print(f"Sleep insight {d}: {sleep_insight[:60]}...")
+
                         cur.execute("""
                             INSERT INTO health_data
-                            (date, sleep_duration, deep_sleep, rem_sleep, sleep_score, hrv, resting_hr)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s)
+                            (date, sleep_duration, deep_sleep, rem_sleep, light_sleep, awake_time,
+                             sleep_score, sleep_score_feedback, hrv, hrv_status, resting_hr,
+                             avg_night_hr, avg_respiration, lowest_respiration, highest_respiration,
+                             sleep_ai_insight)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                             ON CONFLICT (date) DO UPDATE SET
                             sleep_duration=EXCLUDED.sleep_duration,
-                            hrv=COALESCE(EXCLUDED.hrv, health_data.hrv),
-                            sleep_score=COALESCE(EXCLUDED.sleep_score, health_data.sleep_score),
                             deep_sleep=EXCLUDED.deep_sleep,
                             rem_sleep=EXCLUDED.rem_sleep,
-                            resting_hr=EXCLUDED.resting_hr
-                        """, (d, dur, to_hours(dto.get("deepSleepSeconds")),
-                              to_hours(dto.get("remSleepSeconds")), score,
-                              hrv, resting_hr))
+                            light_sleep=EXCLUDED.light_sleep,
+                            awake_time=EXCLUDED.awake_time,
+                            sleep_score=EXCLUDED.sleep_score,
+                            hrv=COALESCE(EXCLUDED.hrv, health_data.hrv),
+                            resting_hr=EXCLUDED.resting_hr,
+                            avg_night_hr=EXCLUDED.avg_night_hr,
+                            avg_respiration=EXCLUDED.avg_respiration,
+                            lowest_respiration=EXCLUDED.lowest_respiration,
+                            highest_respiration=EXCLUDED.highest_respiration,
+                            sleep_ai_insight=COALESCE(EXCLUDED.sleep_ai_insight, health_data.sleep_ai_insight)
+                        """, (d, dur, deep, rem, light, awake, score, score_feedback,
+                              hrv, hrv_status, resting_hr, avg_night_hr,
+                              avg_resp, low_resp, high_resp, sleep_insight))
                         saved += 1
                         print(f"Health {d}: dur={dur}h score={score} hrv={hrv} rhr={resting_hr}")
                 except Exception as e:
@@ -813,7 +892,81 @@ def sync_health(client, days=30):
 # COACH LOGIC
 # ══════════════════════════════════════════════
 
-def build_context(profile, recent_activities, recent_health, chat_history):
+def generate_sleep_insight(health_row, avg_hrv_7d, api_key):
+    """Generiert KI-Bewertung für Schlafdaten."""
+    try:
+        prompt = f"""Du bist ein Schlaf- und Erholungsexperte. Gib eine kurze, direkte Bewertung (2-3 Sätze, max 100 Wörter) auf Deutsch.
+
+Schlafdaten heute:
+- Gesamtschlaf: {health_row.get('sleep_duration','?')}h
+- Tiefschlaf: {health_row.get('deep_sleep','?')}h
+- REM: {health_row.get('rem_sleep','?')}h
+- Score: {health_row.get('sleep_score','?')}/100
+- HRV: {health_row.get('hrv','?')}ms (Ø 7 Tage: {avg_hrv_7d}ms)
+- Ruhepuls: {health_row.get('resting_hr','?')}bpm
+- Atemfrequenz: {health_row.get('avg_respiration','?')} brpm
+
+Bewerte ehrlich: War die Erholung gut? Was bedeutet das für das heutige Training?
+Antworte NUR mit der Bewertung, kein Präambel."""
+
+        res = req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 150,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=15
+        )
+        data = res.json()
+        return "".join(b.get("text","") for b in data.get("content",[]))
+    except:
+        return None
+
+def generate_activity_insight(activity, ftp, api_key):
+    """Generiert KI-Bewertung für eine Trainingseinheit."""
+    try:
+        laps = activity.get("laps") or []
+        if isinstance(laps, str):
+            try: laps = json.loads(laps)
+            except: laps = []
+
+        lap_text = ""
+        for l in laps[:6]:
+            if l.get("avg_power"):
+                pct = round(l["avg_power"]/ftp*100)
+                lap_text += f"\nLap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({pct}% FTP)"
+
+        prompt = f"""Du bist ein Radsport-Coach. Gib eine kurze, direkte Einheiten-Bewertung (2-3 Sätze, max 80 Wörter) auf Deutsch.
+
+Training: {activity.get('name')}
+- Dauer: {activity.get('duration_min')}min
+- Ø Watt: {activity.get('avg_power','?')}W ({round((activity.get('avg_power') or 0)/ftp*100)}% FTP)
+- NP: {activity.get('norm_power','?')}W
+- Ø HR: {activity.get('avg_hr','?')}bpm
+- Aerob TE: {activity.get('aerobic_te','?')}
+{lap_text}
+
+FTP: {ftp}W
+
+Kurze direkte Bewertung: Wie gut war die Einheit? Was war stark, was nicht?
+NUR die Bewertung, kein Präambel."""
+
+        res = req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 120,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=15
+        )
+        data = res.json()
+        text = "".join(b.get("text","") for b in data.get("content",[]))
+
+        # Kurze Version für Kachel (1 Satz)
+        short = text.split('.')[0].strip() + '.' if text else ""
+        return text, short
+    except:
+        return None, None
+
+
     """Baut den kompletten Coach-Kontext für Claude."""
     ftp = profile.get("ftp", 210)
     weight = profile.get("weight", 63)
