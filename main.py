@@ -942,8 +942,12 @@ GESUNDHEITSDATEN (letzte 7 Tage):
 BISHERIGER CHAT (nur zur Orientierung):
 {history_text if history_text else "Neues Gespräch."}
 
-Regeln:
-- Frag NIEMALS nach Daten die du bereits oben hast
+Formatierung:
+- Keine Markdown-Tabellen — nutze stattdessen einfachen Text mit Zeilenumbrüchen
+- Listen mit • oder Zeilenumbrüchen statt Tabellen
+- Beispiel statt Tabelle: "30.04: 167bpm → 04.05: 162bpm (↓5bpm)"
+- Bold für wichtige Werte: **210W**, **Z4**
+- Kurze klare Sätze, kein Fülltext
 - Beziehe dich immer auf konkrete Zahlen aus den Daten
 - Bei Outdoor-Einheiten ohne Laps: Nutze die Zonen-Verteilung für die Intensitätsbewertung — NICHT nur den Durchschnittswatt! Z.B. 45min in Z4/Z5 = intensive Einheit, egal ob Ø-Watt niedrig ist
 - Bei Indoor/Zwift: Lap-Daten sind präziser, nutze diese
