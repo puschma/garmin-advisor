@@ -390,7 +390,17 @@ def sync_strava(days=30):
                         })
 
                 detail = req.get(f"{STRAVA_API}/activities/{strava_id}", headers=headers).json()
-                raw_data = {"strava_synced": True, "strava_id": strava_id}
+
+                # Training Load selbst berechnen (wie Garmin: TSS)
+                training_load = None
+                np = detail.get("weighted_average_watts")
+                dur_sec = detail.get("moving_time", 0)
+                if np and dur_sec and ftp:
+                    if_val = np / ftp
+                    training_load = round((dur_sec / 3600) * (if_val ** 2) * 100, 1)
+                    print(f"ATL berechnet: {a.get('name')} = {training_load} (NP={np}W, FTP={ftp}W)")
+
+                raw_data = {"source": "strava", "strava_id": strava_id}
 
                 if garmin_match:
                     # Garmin-Eintrag mit Strava-Zonen und Laps anreichern
@@ -408,10 +418,11 @@ def sync_strava(days=30):
                     cur.execute("""
                         INSERT INTO activities
                         (id, date, name, type, duration_min, avg_power, norm_power,
-                         avg_hr, max_hr, calories, power_zones, hr_zones, laps, raw)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                         avg_hr, max_hr, calories, training_load, power_zones, hr_zones, laps, raw)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         ON CONFLICT (id) DO UPDATE SET
                         power_zones=EXCLUDED.power_zones,
+                        training_load=COALESCE(EXCLUDED.training_load, activities.training_load),
                         laps=EXCLUDED.laps, raw=EXCLUDED.raw
                     """, (
                         strava_id, act_date, a.get("name"), "cycling", duration_min,
@@ -420,6 +431,7 @@ def sync_strava(days=30):
                         round(detail["average_heartrate"]) if detail.get("average_heartrate") else None,
                         round(detail["max_heartrate"]) if detail.get("max_heartrate") else None,
                         detail.get("calories"),
+                        training_load,
                         json.dumps(power_zones), json.dumps({}),
                         json.dumps(laps), json.dumps(raw_data)
                     ))
