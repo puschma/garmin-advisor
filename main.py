@@ -440,6 +440,38 @@ def sync_strava(days=30):
     return saved, "ok"
 
 
+@app.route("/recalc-atl", methods=["GET", "POST"])
+def recalc_atl():
+    """Berechnet ATL für alle Strava-Rides die noch keinen haben."""
+    try:
+        ftp = 210
+        with get_db() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT data FROM profile WHERE id=1")
+                r = cur.fetchone()
+                if r and r["data"]: ftp = r["data"].get("ftp", 210)
+
+                cur.execute("""
+                    SELECT id, duration_min, norm_power, avg_power
+                    FROM activities
+                    WHERE training_load IS NULL
+                    AND (norm_power IS NOT NULL OR avg_power IS NOT NULL)
+                """)
+                acts = cur.fetchall()
+                updated = 0
+                for a in acts:
+                    np = a["norm_power"] or a["avg_power"]
+                    dur_h = (a["duration_min"] or 0) / 60
+                    if np and dur_h and ftp:
+                        if_val = np / ftp
+                        tl = round(dur_h * (if_val ** 2) * 100, 1)
+                        cur.execute("UPDATE activities SET training_load=%s WHERE id=%s", (tl, a["id"]))
+                        updated += 1
+            conn.commit()
+        return jsonify({"ok": True, "updated": updated, "ftp": ftp})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/cleanup-outdoor", methods=["POST"])
 def cleanup_outdoor():
     """Löscht alle Outdoor-Einträge die nicht sauber von Strava kommen."""
