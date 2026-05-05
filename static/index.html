@@ -92,10 +92,19 @@ input[type=range]{width:100%;accent-color:var(--blue);height:4px}
 .messages{flex:1;overflow-y:auto;padding:0;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch}
 
 /* Coach message — exakt wie Claude */
-.msg-coach{padding:20px 20px 4px;animation:mi .2s ease;max-width:680px;width:100%;margin:0 auto}
+.msg-coach{padding:24px 20px 8px;animation:mi .2s ease;max-width:680px;width:100%;margin:0 auto}
 @keyframes mi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
-.cb2{font-size:15px;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.cb2{font-size:16px;line-height:1.85;color:var(--text);word-break:break-word}
 .cb2 strong{color:#fff;font-weight:600}
+.cb2 p{margin-bottom:14px}
+.cb2 p:last-child{margin-bottom:0}
+.cb2 ul,.cb2 ol{padding-left:22px;margin-bottom:14px}
+.cb2 li{margin-bottom:6px;line-height:1.7}
+.cb2 table{width:100%;border-collapse:collapse;margin-bottom:14px}
+.cb2 th{padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);color:var(--text2);font-weight:600;font-size:12px;text-transform:uppercase}
+.cb2 td{padding:8px 12px;border-bottom:1px solid var(--border2)}
+.cb2 tr:last-child td{border-bottom:none}
+.cb2 h3{font-size:16px;font-weight:700;margin:16px 0 8px}
 
 /* User message — rechts wie Claude */
 .msg-user{padding:20px 20px 4px;display:flex;justify-content:flex-end;animation:mi .2s ease;max-width:680px;width:100%;margin:0 auto}
@@ -958,11 +967,36 @@ function scrollToBottom(msgs){
   setTimeout(()=>msgs.scrollTop=msgs.scrollHeight, 50);
 }
 
+function renderMarkdown(text){
+  let html = text
+    // Tabellen
+    .replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/gm, (match, header, rows) => {
+      const ths = header.split('|').filter(s=>s.trim()).map(s=>`<th>${s.trim()}</th>`).join('');
+      const trs = rows.trim().split('\n').map(row => {
+        const tds = row.split('|').filter(s=>s.trim()).map(s=>`<td>${s.trim()}</td>`).join('');
+        return `<tr>${tds}</tr>`;
+      }).join('');
+      return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+    })
+    // Bold
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // H3
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    // H2
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    // Listen
+    .replace(/^[•\-\*] (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/gs, match => `<ul>${match}</ul>`)
+    // Absätze
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  return `<p>${html}</p>`;
+}
+
 function addCoachMsg(text, scroll=true){
   const msgs=document.getElementById('messages');
   const div=document.createElement('div'); div.className='msg-coach';
-  const id='msg-'+Date.now();
-  div.innerHTML=`<div class="cb2">${escHtml(text)}</div><button onclick="speakTextManual(this.dataset.text)" data-text="${text.replace(/"/g,'&quot;')}" style="margin-top:8px;padding:4px 10px;background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;float:right">🔊</button>`;
+  div.innerHTML=`<div class="cb2">${renderMarkdown(text)}</div><button onclick="speakTextManual(this.dataset.text)" data-text="${text.replace(/"/g,'&quot;')}" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:4px 0;margin-top:4px;display:block">🔊</button>`;
   msgs.appendChild(div);
   if(scroll) smartScroll(msgs);
 }
