@@ -964,22 +964,13 @@ function scrollToBottom(msgs){
 
 function renderMarkdown(text){
   let html = text
-    // Tabellen → Mobile Cards
-    .replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/gm, (match, header, rows) => {
-      const headers = header.split('|').map(s=>s.trim()).filter(Boolean);
-      const dataRows = rows.trim().split('\n').map(row =>
-        row.split('|').map(s=>s.trim()).filter(Boolean)
-      );
-      let cards = '<div class="mob-table">';
-      dataRows.forEach(cells => {
-        cards += '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px">';
-        cells.forEach((cell, i) => {
-          if(headers[i]) cards += `<div class="mob-row"><span class="mob-key">${headers[i]}</span><span class="mob-val">${cell}</span></div>`;
-        });
-        cards += '</div>';
-      });
-      cards += '</div>';
-      return cards;
+    // Tabellen komplett entfernen — Coach soll keine machen
+    .replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/gm, (match) => {
+      // Roh-Text extrahieren ohne Pipes
+      return match.split('\n')
+        .filter(l => !l.match(/^[\|\s\-:]+$/))
+        .map(l => l.replace(/^\||\|$/g,'').split('|').map(s=>s.trim()).filter(Boolean).join(' · '))
+        .join('\n');
     })
     // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
