@@ -964,30 +964,18 @@ function scrollToBottom(msgs){
 
 function renderMarkdown(text){
   let html = text
-    // Tabellen → schöne Lap-Cards
-    .replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/gm, (match, header, rows) => {
-      const headers = header.split('|').map(s=>s.trim()).filter(Boolean);
-      const dataRows = rows.trim().split('\n').map(row =>
-        row.split('|').map(s=>s.trim()).filter(Boolean)
-      );
-      let out = '<div style="display:flex;flex-direction:column;gap:8px;margin:12px 0">';
-      dataRows.forEach(cells => {
-        const primary = cells[0] || '';
-        const rest = cells.slice(1).map((c,i) => `<span style="color:var(--text2);font-size:14px">${headers[i+1]||''}: </span><span style="font-weight:600">${c}</span>`).join(' &nbsp;·&nbsp; ');
-        out += `<div style="padding:10px 14px;background:var(--card2);border-radius:12px;border:1px solid var(--border)">
-          <div style="font-weight:700;margin-bottom:4px;font-size:15px">${primary}</div>
-          <div style="font-size:13px;line-height:1.6">${rest}</div>
-        </div>`;
-      });
-      out += '</div>';
-      return out;
+    // Tabellen → einfach als Text, Pipes entfernen
+    .replace(/^\|.+\|$/gm, line => {
+      return line.split('|').map(s=>s.trim()).filter(Boolean).join(' · ');
     })
+    // Trennzeilen entfernen
+    .replace(/^[\|\s\-:]+\|$/gm, '')
     // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     // H3/H2
-    .replace(/^#{2,3} (.+)$/gm, '<h3 style="font-size:16px;font-weight:700;margin:16px 0 8px">$1</h3>')
+    .replace(/^#{2,3} (.+)$/gm, '<h3 style="font-size:16px;font-weight:700;margin:16px 0 6px">$1</h3>')
     // Horizontale Linie
-    .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">')
+    .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--border2);margin:12px 0">')
     // Listen
     .replace(/^[•\-\*] (.+)$/gm, '<li>$1</li>')
     .replace(/(<li>.*?<\/li>\n?)+/gs, m => `<ul style="padding-left:20px;margin:8px 0">${m}</ul>`)
