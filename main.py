@@ -1592,7 +1592,109 @@ def chat():
             conn.commit()
 
         # Context aufbauen
-        context = build_context(profile_data, activities, health, history)
+def build_context(profile, recent_activities, recent_health, chat_history):
+    """Baut den kompletten Coach-Kontext."""
+    ftp = profile.get("ftp", 210)
+    weight = profile.get("weight", 63)
+    wpkg = round(ftp / weight, 2)
+    goal_wpkg = profile.get("goal_wpkg", 4.0)
+    goal_ftp = round(goal_wpkg * weight)
+
+    def classify_lap(lap, ftp):
+        p = lap.get("avg_power") or 0
+        pct = round(p / ftp * 100) if ftp else 0
+        if pct < 56: zone = "Z1 Erholung"
+        elif pct < 76: zone = "Z2 Grundlage"
+        elif pct < 91: zone = "Z3 SST/Tempo"
+        elif pct < 106: zone = "Z4 Schwelle"
+        elif pct < 121: zone = "Z5 VO2max"
+        else: zone = "Z6+ Anaerob"
+        return f"{pct}% FTP → {zone}"
+
+    def format_zones(power_zones, ftp):
+        if not power_zones: return ""
+        def fmt_sec(s):
+            if not s or s == 0: return None
+            m = round(s / 60)
+            return f"{m}min" if m > 0 else None
+        parts = []
+        for z in ["Z1","Z2","Z3","Z4","Z5","Z6"]:
+            t = fmt_sec(power_zones.get(z))
+            if t: parts.append(f"{z}: {t}")
+        return "\n      Zonen: " + " | ".join(parts) if parts else ""
+
+    acts_text = ""
+    for i, a in enumerate(recent_activities[:10]):
+        laps = a.get("laps") or []
+        if isinstance(laps, str):
+            try: laps = json.loads(laps)
+            except: laps = []
+        power_zones = a.get("power_zones") or {}
+        if isinstance(power_zones, str):
+            try: power_zones = json.loads(power_zones)
+            except: power_zones = {}
+        lap_text = ""
+        for l in laps:
+            if l.get("avg_power"):
+                hr_str = f" | HR {l['avg_hr']}bpm" if l.get("avg_hr") else ""
+                cad_str = f" | Kadenz {l['cadence']}" if l.get("cadence") else ""
+                lap_text += f"\n      Lap {l.get('index','?')}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)}){hr_str}{cad_str}"
+        zones_text = format_zones(power_zones, ftp)
+        name_lower = (a.get("name") or "").lower()
+        is_indoor = "zwift" in name_lower or "virtual" in name_lower
+        act_type = "🏠 Indoor" if is_indoor else "🌳 Outdoor"
+        marker = " ← NEUESTES TRAINING" if i == 0 else ""
+        acts_text += f"\n• {a['date']} – {a['name']} [{act_type}]{marker}\n  Dauer: {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a['norm_power'] or '?'}W | Ø HR: {a['avg_hr'] or '?'}bpm{zones_text}{lap_text}"
+
+    health_text = ""
+    for h in recent_health[:7]:
+        health_text += f"\n• {h['date']}: Schlaf {h.get('sleep_duration','?')}h | Score {h.get('sleep_score') or '?'} | HRV {h.get('hrv') or '?'}ms | Ruhepuls {h.get('resting_hr') or '?'}bpm"
+
+    history_text = ""
+    for m in chat_history[-20:]:
+        role = "Du" if m["role"] == "user" else "Coach"
+        history_text += f"\n{role}: {m['content'][:200]}"
+
+    return f"""Du bist ein KI-Radsport-Coach, eingebettet in eine persönliche Trainings-App. Du hast direkten Datenbankzugriff auf alle Trainingsdaten des Athleten.
+
+⚠️ ABSOLUT WICHTIG:
+- Du hast ALLE Daten bereits unten — frage NIEMALS nach weiteren Daten, Screenshots oder Links
+- Du bist NICHT ChatGPT oder ein allgemeiner Assistent — du BIST dieser Coach in dieser App
+- Sage NIEMALS dass du keinen App-Zugriff hast — du hast ihn, die Daten stehen unten
+- Analysiere direkt was du siehst, ohne Rückfragen
+
+HEUTE: {date.today().strftime('%A, %d.%m.%Y')}
+
+ATHLETEN-PROFIL:
+- FTP: {ftp}W | Gewicht: {weight}kg | Aktuell: {wpkg} W/kg
+- Ziel: {goal_wpkg} W/kg = {goal_ftp}W FTP (noch +{goal_ftp - ftp}W)
+- Trainingstage/Woche: {profile.get('days', 4)}
+
+TRAININGS-ZONEN (FTP {ftp}W):
+Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.90)}W
+Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 {round(ftp*1.06)}-{round(ftp*1.20)}W | Z6+ >{round(ftp*1.21)}W
+
+LETZTE AKTIVITÄTEN (neueste zuerst):
+{acts_text if acts_text else "Keine Aktivitäten — Sync durchführen."}
+
+GESUNDHEITSDATEN (letzte 7 Tage):
+{health_text if health_text else "Keine Gesundheitsdaten — Sync durchführen."}
+
+BISHERIGER CHAT:
+{history_text if history_text else "Neues Gespräch."}
+
+Formatierung:
+- Keine Markdown-Tabellen — nutze stattdessen einfachen Text mit Zeilenumbrüchen
+- Listen mit • oder Zeilenumbrüchen statt Tabellen
+- Bold für wichtige Werte: **210W**, **Z4**
+
+Regeln:
+- Frag NIEMALS nach Daten die du bereits oben hast
+- Bei Outdoor ohne Laps: Zonen-Verteilung für Intensitätsbewertung nutzen
+- Nenne konkrete Wattbereiche bei Empfehlungen
+- Antworte auf Deutsch, präzise und ohne Fülltext"""
+
+
 
         # Claude aufrufen — mit oder ohne Bild
         image_data = body.get("image_data")
