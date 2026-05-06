@@ -79,6 +79,21 @@ def init_db():
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
 
+                -- Neue Spalten zu health_data hinzufügen falls nicht vorhanden
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS light_sleep FLOAT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS awake_time FLOAT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS sleep_score_feedback TEXT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS hrv_status TEXT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS avg_night_hr INT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS avg_respiration FLOAT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS lowest_respiration FLOAT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS highest_respiration FLOAT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS sleep_ai_insight TEXT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS hrv_ai_insight TEXT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS stress_score INT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS body_battery_start INT;
+                ALTER TABLE health_data ADD COLUMN IF NOT EXISTS body_battery_end INT;
+
                 -- Neue Spalten zu activities hinzufügen falls nicht vorhanden
                 ALTER TABLE activities ADD COLUMN IF NOT EXISTS ai_insight TEXT;
                 ALTER TABLE activities ADD COLUMN IF NOT EXISTS ai_short TEXT;
@@ -912,32 +927,36 @@ def sync_health(client, days=30):
                             if sleep_insight:
                                 print(f"Sleep insight {d}: {sleep_insight[:60]}...")
 
-                        cur.execute("""
-                            INSERT INTO health_data
-                            (date, sleep_duration, deep_sleep, rem_sleep, light_sleep, awake_time,
-                             sleep_score, sleep_score_feedback, hrv, hrv_status, resting_hr,
-                             avg_night_hr, avg_respiration, lowest_respiration, highest_respiration,
-                             sleep_ai_insight)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                            ON CONFLICT (date) DO UPDATE SET
-                            sleep_duration=EXCLUDED.sleep_duration,
-                            deep_sleep=EXCLUDED.deep_sleep,
-                            rem_sleep=EXCLUDED.rem_sleep,
-                            light_sleep=EXCLUDED.light_sleep,
-                            awake_time=EXCLUDED.awake_time,
-                            sleep_score=EXCLUDED.sleep_score,
-                            hrv=COALESCE(EXCLUDED.hrv, health_data.hrv),
-                            resting_hr=EXCLUDED.resting_hr,
-                            avg_night_hr=EXCLUDED.avg_night_hr,
-                            avg_respiration=EXCLUDED.avg_respiration,
-                            lowest_respiration=EXCLUDED.lowest_respiration,
-                            highest_respiration=EXCLUDED.highest_respiration,
-                            sleep_ai_insight=COALESCE(EXCLUDED.sleep_ai_insight, health_data.sleep_ai_insight)
-                        """, (d, dur, deep, rem, light, awake, score, score_feedback,
-                              hrv, hrv_status, resting_hr, avg_night_hr,
-                              avg_resp, low_resp, high_resp, sleep_insight))
-                        saved += 1
-                        print(f"Health {d}: dur={dur}h score={score} hrv={hrv} rhr={resting_hr}")
+                        try:
+                            cur.execute("""
+                                INSERT INTO health_data
+                                (date, sleep_duration, deep_sleep, rem_sleep, light_sleep, awake_time,
+                                 sleep_score, sleep_score_feedback, hrv, hrv_status, resting_hr,
+                                 avg_night_hr, avg_respiration, lowest_respiration, highest_respiration,
+                                 sleep_ai_insight)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                ON CONFLICT (date) DO UPDATE SET
+                                sleep_duration=EXCLUDED.sleep_duration,
+                                deep_sleep=EXCLUDED.deep_sleep,
+                                rem_sleep=EXCLUDED.rem_sleep,
+                                light_sleep=EXCLUDED.light_sleep,
+                                awake_time=EXCLUDED.awake_time,
+                                sleep_score=EXCLUDED.sleep_score,
+                                hrv=COALESCE(EXCLUDED.hrv, health_data.hrv),
+                                resting_hr=EXCLUDED.resting_hr,
+                                avg_night_hr=EXCLUDED.avg_night_hr,
+                                avg_respiration=EXCLUDED.avg_respiration,
+                                lowest_respiration=EXCLUDED.lowest_respiration,
+                                highest_respiration=EXCLUDED.highest_respiration,
+                                sleep_ai_insight=COALESCE(EXCLUDED.sleep_ai_insight, health_data.sleep_ai_insight)
+                            """, (d, dur, deep, rem, light, awake, score, score_feedback,
+                                  hrv, hrv_status, resting_hr, avg_night_hr,
+                                  avg_resp, low_resp, high_resp, sleep_insight))
+                            saved += 1
+                            print(f"Health {d}: dur={dur}h score={score} hrv={hrv} rhr={resting_hr}")
+                        except Exception as insert_err:
+                            conn.rollback()
+                            print(f"Health insert error {d}: {insert_err}")
                 except Exception as e:
                     print(f"Health {d}: {e}")
         conn.commit()
