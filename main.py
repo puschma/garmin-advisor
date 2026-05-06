@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Cycling Coach Backend v2.2 - Force redeploy
 """
 Cycling Coach – Railway Backend
 PostgreSQL + Garmin + Anthropic Claude
@@ -1459,6 +1460,7 @@ Formatierung: Keine Tabellen. Bold für Werte. Kurze direkte Sätze auf Deutsch.
 def chat():
     body = request.get_json() or {}
     message = body.get("message", "").strip()
+    image_data = body.get("image")
     if not message:
         return jsonify({"ok": False, "error": "Nachricht fehlt"}), 400
 
