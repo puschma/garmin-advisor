@@ -832,6 +832,17 @@ def sync_activities(client, days=30):
 
     return None
 
+def fetch_hrv_for_date(client, d):
+    """Holt HRV für ein bestimmtes Datum."""
+    try:
+        data = client.get_hrv_data(d)
+        if not data: return None
+        summary = data.get("hrvSummary", {})
+        val = summary.get("lastNight") or summary.get("lastNightAvg") or summary.get("weeklyAvg")
+        return round(float(val)) if val and float(val) > 0 else None
+    except:
+        return None
+
 def sync_health(client, days=30):
     """Holt Schlaf/HRV mit allen Feldern und generiert AI Insights."""
     today = date.today()
