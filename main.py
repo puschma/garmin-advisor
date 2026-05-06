@@ -1011,146 +1011,6 @@ NUR die Bewertung, kein Präambel."""
         return None, None
 
 
-    """Baut den kompletten Coach-Kontext für Claude."""
-    ftp = profile.get("ftp", 210)
-    weight = profile.get("weight", 63)
-    wpkg = round(ftp / weight, 2)
-    goal_wpkg = profile.get("goal_wpkg", 4.0)
-    goal_ftp = round(goal_wpkg * weight)
-
-    def classify_lap(lap, ftp):
-        p = lap.get("avg_power") or 0
-        pct = round(p / ftp * 100) if ftp else 0
-        if pct < 56: zone = "Z1 (Erholung)"
-        elif pct < 76: zone = "Z2 (Grundlage)"
-        elif pct < 91: zone = "Z3 (Tempo/SST)"
-        elif pct < 106: zone = "Z4 (Schwelle)"
-        elif pct < 121: zone = "Z5 (VO2max)"
-        elif pct < 151: zone = "Z6 (Anaerob)"
-        else: zone = "Z7 (Neuromuskulär)"
-        return f"{pct}% FTP → {zone}"
-
-    def format_zones(power_zones, hr_zones, duration_min, ftp):
-        """Formatiert Zonen-Verteilung als lesbaren Text."""
-        if not power_zones:
-            return ""
-        
-        def fmt_sec(s):
-            if not s or s == 0: return None
-            m = round(s / 60)
-            return f"{m}min" if m > 0 else None
-
-        z_labels = {
-            "Z1": f"Z1 Erholung <{round(ftp*0.55)}W",
-            "Z2": f"Z2 Grundlage {round(ftp*0.56)}-{round(ftp*0.75)}W",
-            "Z3": f"Z3 Tempo/SST {round(ftp*0.76)}-{round(ftp*0.90)}W",
-            "Z4": f"Z4 Schwelle {round(ftp*0.91)}-{round(ftp*1.05)}W",
-            "Z5": f"Z5 VO2max {round(ftp*1.06)}-{round(ftp*1.20)}W",
-            "Z6": f"Z6+ Anaerob >{round(ftp*1.21)}W",
-        }
-
-        parts = []
-        for z in ["Z1","Z2","Z3","Z4","Z5","Z6"]:
-            secs = power_zones.get(z)
-            t = fmt_sec(secs)
-            if t:
-                parts.append(f"{z_labels[z]}: {t}")
-
-        return "\n      Zonen: " + " | ".join(parts) if parts else ""
-
-    def detect_activity_type(name, activity_type):
-        """Erkennt ob Indoor oder Outdoor."""
-        name_lower = (name or "").lower()
-        type_lower = (activity_type or "").lower()
-        if "zwift" in name_lower or "virtual" in type_lower or "indoor" in name_lower:
-            return "🏠 Indoor (Zwift)"
-        elif "wahoo" in name_lower or any(x in name_lower for x in ["radfahren", "ride", "outdoor", "straße"]):
-            return "🌳 Outdoor"
-        return "🚴 Radfahren"
-
-    acts_text = ""
-    for i, a in enumerate(recent_activities[:10]):
-        laps = a.get("laps") or []
-        if isinstance(laps, str):
-            try: laps = json.loads(laps)
-            except: laps = []
-
-        power_zones = a.get("power_zones") or {}
-        if isinstance(power_zones, str):
-            try: power_zones = json.loads(power_zones)
-            except: power_zones = {}
-
-        lap_text = ""
-        for l in laps:
-            if l.get("avg_power"):
-                hr_str = f" | HR {l['avg_hr']}bpm" if l.get("avg_hr") else ""
-                cad_str = f" | Kadenz {l['cadence']}" if l.get("cadence") else ""
-                lap_text += f"\n      Lap {l['index']}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)}){hr_str}{cad_str}"
-
-        zones_text = format_zones(power_zones, a.get("hr_zones"), a.get("duration_min"), ftp)
-        act_type = detect_activity_type(a.get("name"), a.get("type"))
-        marker = " ← NEUESTES TRAINING" if i == 0 else ""
-
-        # Outdoor-Hinweis wenn keine Laps aber Zonen vorhanden
-        outdoor_note = ""
-        if not laps and "🌳" in act_type and zones_text:
-            outdoor_note = "\n      ⚠️ Outdoor ohne Laps — bitte Zonen-Verteilung für echte Intensitätsbewertung nutzen!"
-
-        acts_text += f"""
-• {a['date']} – {a['name']} [{act_type}]{marker}
-  Dauer: {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a['norm_power'] or '?'}W | Ø HR: {a['avg_hr'] or '?'}bpm
-  Aerob TE: {a['aerobic_te'] or '?'} | Anaerob TE: {a['anaerobic_te'] or '?'}{zones_text}{outdoor_note}{lap_text}"""
-
-    health_text = ""
-    for h in recent_health[:7]:
-        health_text += f"\n• {h['date']}: Schlaf {h['sleep_duration']}h | Score {h['sleep_score'] or '?'} | HRV {h['hrv'] or '?'}ms | Ruhepuls {h['resting_hr'] or '?'}bpm"
-
-    history_text = ""
-    for m in chat_history[-20:]:
-        role = "Du" if m["role"] == "user" else "Coach"
-        history_text += f"\n{role}: {m['content']}"
-
-    return f"""Du bist ein KI-Radsport-Coach, eingebettet in eine persönliche Trainings-App. Du hast direkten Datenbankzugriff auf alle Trainingsdaten des Athleten.
-
-⚠️ ABSOLUT WICHTIG:
-- Du hast ALLE Daten bereits unten — frage NIEMALS nach weiteren Daten, Screenshots oder Links
-- Du bist NICHT ChatGPT oder ein allgemeiner Assistent — du BIST dieser Coach in dieser App
-- Sage NIEMALS dass du keinen App-Zugriff hast — du hast ihn, die Daten stehen unten
-- Sage NIEMALS dass der Athlet Daten woanders eingeben oder kopieren soll
-- Analysiere direkt was du siehst, ohne Rückfragen
-
-HEUTE: {date.today().strftime('%A, %d.%m.%Y')} (Wochentag beachten!)
-
-ATHLETEN-PROFIL:
-- FTP: {ftp}W | Gewicht: {weight}kg | Aktuell: {wpkg} W/kg
-- Ziel: {goal_wpkg} W/kg = {goal_ftp}W FTP (noch +{goal_ftp - ftp}W)
-- Trainingstage/Woche: {profile.get('days', 4)}
-
-TRAININGS-ZONEN (FTP {ftp}W):
-Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.90)}W
-Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 {round(ftp*1.06)}-{round(ftp*1.20)}W | Z6+ >{round(ftp*1.21)}W
-
-LETZTE AKTIVITÄTEN (neueste zuerst):
-{acts_text if acts_text else "Keine Aktivitäten gefunden — Sync durchführen."}
-
-GESUNDHEITSDATEN (letzte 7 Tage):
-{health_text if health_text else "Keine Gesundheitsdaten — Sync durchführen."}
-
-BISHERIGER CHAT (nur zur Orientierung):
-{history_text if history_text else "Neues Gespräch."}
-
-Formatierung:
-- Keine Markdown-Tabellen — nutze stattdessen einfachen Text mit Zeilenumbrüchen
-- Listen mit • oder Zeilenumbrüchen statt Tabellen
-- Beispiel statt Tabelle: "30.04: 167bpm → 04.05: 162bpm (↓5bpm)"
-- Bold für wichtige Werte: **210W**, **Z4**
-- Kurze klare Sätze, kein Fülltext
-- Beziehe dich immer auf konkrete Zahlen aus den Daten
-- Bei Outdoor-Einheiten ohne Laps: Nutze die Zonen-Verteilung für die Intensitätsbewertung — NICHT nur den Durchschnittswatt! Z.B. 45min in Z4/Z5 = intensive Einheit, egal ob Ø-Watt niedrig ist
-- Bei Indoor/Zwift: Lap-Daten sind präziser, nutze diese
-- Nenne immer konkrete Wattbereiche bei Empfehlungen
-- Antworte auf Deutsch, präzise und ohne Fülltext"""
-
 # ══════════════════════════════════════════════
 # ROUTES
 # ══════════════════════════════════════════════
@@ -1535,6 +1395,66 @@ def profile():
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+def build_context(profile, recent_activities, recent_health, chat_history):
+    """Baut den Coach-Kontext."""
+    ftp = profile.get("ftp", 210)
+    weight = profile.get("weight", 63)
+    wpkg = round(ftp / weight, 2)
+    goal_wpkg = profile.get("goal_wpkg", 4.0)
+    goal_ftp = round(goal_wpkg * weight)
+
+    def classify_lap(lap, ftp):
+        p = lap.get("avg_power") or 0
+        pct = round(p / ftp * 100) if ftp else 0
+        if pct < 56: return f"{pct}% → Z1"
+        elif pct < 76: return f"{pct}% → Z2"
+        elif pct < 91: return f"{pct}% → Z3 SST"
+        elif pct < 106: return f"{pct}% → Z4 Schwelle"
+        elif pct < 121: return f"{pct}% → Z5 VO2max"
+        else: return f"{pct}% → Z6+"
+
+    acts_text = ""
+    for i, a in enumerate(recent_activities[:10]):
+        laps = a.get("laps") or []
+        if isinstance(laps, str):
+            try: laps = json.loads(laps)
+            except: laps = []
+        power_zones = a.get("power_zones") or {}
+        if isinstance(power_zones, str):
+            try: power_zones = json.loads(power_zones)
+            except: power_zones = {}
+        lap_text = ""
+        for l in laps:
+            if l.get("avg_power"):
+                lap_text += f"\n      Lap {l.get('index','?')}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l,ftp)})"
+        zones_parts = [f"{z}: {round((power_zones.get(z) or 0)/60)}min" for z in ["Z1","Z2","Z3","Z4","Z5","Z6"] if power_zones.get(z)]
+        zones_text = "\n      Zonen: " + " | ".join(zones_parts) if zones_parts else ""
+        is_indoor = "zwift" in (a.get("name") or "").lower()
+        marker = " ← NEUESTES" if i == 0 else ""
+        acts_text += f"\n• {a['date']} – {a['name']} [{'Indoor' if is_indoor else 'Outdoor'}]{marker}\n  {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a.get('norm_power') or '?'}W | HR: {a['avg_hr'] or '?'}bpm{zones_text}{lap_text}"
+
+    health_text = ""
+    for h in recent_health[:7]:
+        health_text += f"\n• {h['date']}: {h.get('sleep_duration','?')}h Schlaf | Score {h.get('sleep_score') or '?'} | HRV {h.get('hrv') or '?'}ms | RHR {h.get('resting_hr') or '?'}bpm"
+
+    history_text = "\n".join(f"{'Du' if m['role']=='user' else 'Coach'}: {m['content'][:200]}" for m in chat_history[-20:])
+
+    return f"""Du bist ein KI-Radsport-Coach in einer persönlichen Trainings-App mit direktem DB-Zugriff.
+
+⚠️ WICHTIG: Du hast ALLE Daten unten. Frage NIE nach mehr Daten. Du BIST die App.
+
+HEUTE: {date.today().strftime('%A, %d.%m.%Y')}
+PROFIL: FTP {ftp}W | {weight}kg | {wpkg} W/kg | Ziel: {goal_wpkg} W/kg ({goal_ftp}W, +{goal_ftp-ftp}W)
+ZONEN: Z1<{round(ftp*.55)}W Z2 {round(ftp*.56)}-{round(ftp*.75)}W Z3 {round(ftp*.76)}-{round(ftp*.9)}W Z4 {round(ftp*.91)}-{round(ftp*1.05)}W Z5 {round(ftp*1.06)}-{round(ftp*1.2)}W
+
+AKTIVITÄTEN:{acts_text or " Keine — Sync durchführen."}
+
+GESUNDHEIT:{health_text or " Keine — Sync durchführen."}
+
+CHAT:{chr(10)+history_text if history_text else " Neues Gespräch."}
+
+Formatierung: Keine Tabellen. Bold für Werte. Kurze direkte Sätze auf Deutsch."""
+
 @app.route("/chat", methods=["POST"])
 def chat():
     body = request.get_json() or {}
@@ -1592,143 +1512,37 @@ def chat():
             conn.commit()
 
         # Context aufbauen
-def build_context(profile, recent_activities, recent_health, chat_history):
-    """Baut den kompletten Coach-Kontext."""
-    ftp = profile.get("ftp", 210)
-    weight = profile.get("weight", 63)
-    wpkg = round(ftp / weight, 2)
-    goal_wpkg = profile.get("goal_wpkg", 4.0)
-    goal_ftp = round(goal_wpkg * weight)
+        context = build_context(profile_data, activities, health, history)
 
-    def classify_lap(lap, ftp):
-        p = lap.get("avg_power") or 0
-        pct = round(p / ftp * 100) if ftp else 0
-        if pct < 56: zone = "Z1 Erholung"
-        elif pct < 76: zone = "Z2 Grundlage"
-        elif pct < 91: zone = "Z3 SST/Tempo"
-        elif pct < 106: zone = "Z4 Schwelle"
-        elif pct < 121: zone = "Z5 VO2max"
-        else: zone = "Z6+ Anaerob"
-        return f"{pct}% FTP → {zone}"
-
-    def format_zones(power_zones, ftp):
-        if not power_zones: return ""
-        def fmt_sec(s):
-            if not s or s == 0: return None
-            m = round(s / 60)
-            return f"{m}min" if m > 0 else None
-        parts = []
-        for z in ["Z1","Z2","Z3","Z4","Z5","Z6"]:
-            t = fmt_sec(power_zones.get(z))
-            if t: parts.append(f"{z}: {t}")
-        return "\n      Zonen: " + " | ".join(parts) if parts else ""
-
-    acts_text = ""
-    for i, a in enumerate(recent_activities[:10]):
-        laps = a.get("laps") or []
-        if isinstance(laps, str):
-            try: laps = json.loads(laps)
-            except: laps = []
-        power_zones = a.get("power_zones") or {}
-        if isinstance(power_zones, str):
-            try: power_zones = json.loads(power_zones)
-            except: power_zones = {}
-        lap_text = ""
-        for l in laps:
-            if l.get("avg_power"):
-                hr_str = f" | HR {l['avg_hr']}bpm" if l.get("avg_hr") else ""
-                cad_str = f" | Kadenz {l['cadence']}" if l.get("cadence") else ""
-                lap_text += f"\n      Lap {l.get('index','?')}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l, ftp)}){hr_str}{cad_str}"
-        zones_text = format_zones(power_zones, ftp)
-        name_lower = (a.get("name") or "").lower()
-        is_indoor = "zwift" in name_lower or "virtual" in name_lower
-        act_type = "🏠 Indoor" if is_indoor else "🌳 Outdoor"
-        marker = " ← NEUESTES TRAINING" if i == 0 else ""
-        acts_text += f"\n• {a['date']} – {a['name']} [{act_type}]{marker}\n  Dauer: {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a['norm_power'] or '?'}W | Ø HR: {a['avg_hr'] or '?'}bpm{zones_text}{lap_text}"
-
-    health_text = ""
-    for h in recent_health[:7]:
-        health_text += f"\n• {h['date']}: Schlaf {h.get('sleep_duration','?')}h | Score {h.get('sleep_score') or '?'} | HRV {h.get('hrv') or '?'}ms | Ruhepuls {h.get('resting_hr') or '?'}bpm"
-
-    history_text = ""
-    for m in chat_history[-20:]:
-        role = "Du" if m["role"] == "user" else "Coach"
-        history_text += f"\n{role}: {m['content'][:200]}"
-
-    return f"""Du bist ein KI-Radsport-Coach, eingebettet in eine persönliche Trainings-App. Du hast direkten Datenbankzugriff auf alle Trainingsdaten des Athleten.
-
-⚠️ ABSOLUT WICHTIG:
-- Du hast ALLE Daten bereits unten — frage NIEMALS nach weiteren Daten, Screenshots oder Links
-- Du bist NICHT ChatGPT oder ein allgemeiner Assistent — du BIST dieser Coach in dieser App
-- Sage NIEMALS dass du keinen App-Zugriff hast — du hast ihn, die Daten stehen unten
-- Analysiere direkt was du siehst, ohne Rückfragen
-
-HEUTE: {date.today().strftime('%A, %d.%m.%Y')}
-
-ATHLETEN-PROFIL:
-- FTP: {ftp}W | Gewicht: {weight}kg | Aktuell: {wpkg} W/kg
-- Ziel: {goal_wpkg} W/kg = {goal_ftp}W FTP (noch +{goal_ftp - ftp}W)
-- Trainingstage/Woche: {profile.get('days', 4)}
-
-TRAININGS-ZONEN (FTP {ftp}W):
-Z1 <{round(ftp*0.55)}W | Z2 {round(ftp*0.56)}-{round(ftp*0.75)}W | Z3 {round(ftp*0.76)}-{round(ftp*0.90)}W
-Z4 {round(ftp*0.91)}-{round(ftp*1.05)}W | Z5 {round(ftp*1.06)}-{round(ftp*1.20)}W | Z6+ >{round(ftp*1.21)}W
-
-LETZTE AKTIVITÄTEN (neueste zuerst):
-{acts_text if acts_text else "Keine Aktivitäten — Sync durchführen."}
-
-GESUNDHEITSDATEN (letzte 7 Tage):
-{health_text if health_text else "Keine Gesundheitsdaten — Sync durchführen."}
-
-BISHERIGER CHAT:
-{history_text if history_text else "Neues Gespräch."}
-
-Formatierung:
-- Keine Markdown-Tabellen — nutze stattdessen einfachen Text mit Zeilenumbrüchen
-- Listen mit • oder Zeilenumbrüchen statt Tabellen
-- Bold für wichtige Werte: **210W**, **Z4**
-
-Regeln:
-- Frag NIEMALS nach Daten die du bereits oben hast
-- Bei Outdoor ohne Laps: Zonen-Verteilung für Intensitätsbewertung nutzen
-- Nenne konkrete Wattbereiche bei Empfehlungen
-- Antworte auf Deutsch, präzise und ohne Fülltext"""
-
-
-
-        # Claude aufrufen — mit oder ohne Bild
-        image_data = body.get("image_data")
-        image_type = body.get("image_type", "image/jpeg")
-
+        # Bild-Support
+        user_content = []
         if image_data:
-            # Mit Bild
-            user_content = [
-                {"type": "image", "source": {"type": "base64", "media_type": image_type, "data": image_data}},
-                {"type": "text", "text": context + f"\n\nAthlet: {message}"}
-            ]
-        else:
-            user_content = context + f"\n\nAthlet: {message}"
+            img_type = "image/jpeg"
+            if image_data.startswith("data:"):
+                header, b64 = image_data.split(",", 1)
+                img_type = header.split(";")[0].replace("data:", "")
+            else:
+                b64 = image_data
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": img_type, "data": b64}})
+        user_content.append({"type": "text", "text": message})
 
-        messages = [{"role": "user", "content": user_content}]
-
+        # Claude API aufrufen
         res = req.post(
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
+            headers={"Content-Type": "application/json", "x-api-key": os.environ.get("ANTHROPIC_API_KEY",""), "anthropic-version": "2023-06-01"},
             json={
                 "model": "claude-sonnet-4-6",
-                "max_tokens": 1500,
-                "messages": messages
+                "max_tokens": 1000,
+                "system": context,
+                "messages": [{"role": "user", "content": user_content}]
             },
-            timeout=45
+            timeout=30
         )
         data = res.json()
-        reply = "".join(b.get("text", "") for b in data.get("content", []))
-        if not reply:
+        if "error" in data:
             return jsonify({"ok": False, "error": f"Claude Fehler: {data}"}), 500
+
+        reply = "".join(b.get("text","") for b in data.get("content",[]))
 
         # Antwort speichern
         with get_db() as conn:
@@ -1740,10 +1554,12 @@ Regeln:
             conn.commit()
 
         return jsonify({"ok": True, "reply": reply})
+
     except Exception as e:
+        print(f"Chat error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
-@app.route("/generate-plan", methods=["POST"])
+
 def generate_plan():
     body = request.get_json() or {}
     start_date = body.get("start_date")  # ISO date string
