@@ -1065,7 +1065,7 @@ async function sendMsg(){
   showTyping();
   try{
     const body={message:text||'Analysiere dieses Bild'};
-    if(imgData){body.image_data=imgData;body.image_type=imgType;}
+    if(imgData && imgType){body.image=`data:${imgType};base64,${imgData}`;}
     const res=await fetch(`${serverUrl}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await res.json();
     removeTyping();
