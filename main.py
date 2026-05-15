@@ -1457,7 +1457,9 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         lap_text = ""
         for l in laps:
             if l.get("avg_power"):
-                lap_text += f"\n      Lap {l.get('index','?')}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l,ftp)})"
+                lap_text += f"\n      Lap {l.get('index','?')}: {l['duration_min']}min @ {l['avg_power']}W ({classify_lap(l,ftp)}) HR:{l.get('avg_hr','?')}bpm Kadenz:{l.get('cadence','?')}rpm"
+        if not laps:
+            lap_text = "\n      ⚠️ Keine Lap-Daten (Outdoor oder nicht verfügbar)"
         zones_parts = [f"{z}: {round((power_zones.get(z) or 0)/60)}min" for z in ["Z1","Z2","Z3","Z4","Z5","Z6"] if power_zones.get(z)]
         zones_text = "\n      Zonen: " + " | ".join(zones_parts) if zones_parts else ""
         is_indoor = "zwift" in (a.get("name") or "").lower()
@@ -1484,7 +1486,9 @@ GESUNDHEIT:{health_text or " Keine — Sync durchführen."}
 
 CHAT:{chr(10)+history_text if history_text else " Neues Gespräch."}
 
-Formatierung: Keine Tabellen. Bold für Werte. Kurze direkte Sätze auf Deutsch."""
+Formatierung: Keine Tabellen. Bold für Werte. Kurze direkte Sätze auf Deutsch.
+- Bei Fragen nach Laps/Runden: Die Daten stehen OBEN unter AKTIVITÄTEN — analysiere sie direkt!
+- Sage NIEMALS "ich sehe keine Rundendaten" wenn Laps oben aufgelistet sind"""
 
 @app.route("/chat", methods=["POST"])
 def chat():
