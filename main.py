@@ -1463,12 +1463,29 @@ def build_context(profile, recent_activities, recent_health, chat_history):
         zones_parts = [f"{z}: {round((power_zones.get(z) or 0)/60)}min" for z in ["Z1","Z2","Z3","Z4","Z5","Z6"] if power_zones.get(z)]
         zones_text = "\n      Zonen: " + " | ".join(zones_parts) if zones_parts else ""
         is_indoor = "zwift" in (a.get("name") or "").lower()
+        from datetime import datetime as dt
+        try:
+            act_date_obj = dt.strptime(a['date'], '%Y-%m-%d')
+            weekday = act_date_obj.strftime('%A, %d.%m.')
+            days_ago = (date.today() - act_date_obj.date()).days
+            days_ago_str = "heute" if days_ago==0 else "gestern" if days_ago==1 else f"vor {days_ago} Tagen"
+        except:
+            weekday = a['date']
+            days_ago_str = ""
         marker = " ← NEUESTES" if i == 0 else ""
-        acts_text += f"\n• {a['date']} – {a['name']} [{'Indoor' if is_indoor else 'Outdoor'}]{marker}\n  {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a.get('norm_power') or '?'}W | HR: {a['avg_hr'] or '?'}bpm{zones_text}{lap_text}"
+        acts_text += f"\n• {weekday} ({days_ago_str}) – {a['name']} [{'Indoor' if is_indoor else 'Outdoor'}]{marker}\n  {a['duration_min']}min | Ø {a['avg_power'] or '?'}W | NP: {a.get('norm_power') or '?'}W | HR: {a['avg_hr'] or '?'}bpm{zones_text}{lap_text}"
 
     health_text = ""
     for h in recent_health[:7]:
-        health_text += f"\n• {h['date']}: {h.get('sleep_duration','?')}h Schlaf | Score {h.get('sleep_score') or '?'} | HRV {h.get('hrv') or '?'}ms | RHR {h.get('resting_hr') or '?'}bpm"
+        try:
+            h_date_obj = datetime.strptime(h['date'], '%Y-%m-%d')
+            h_weekday = h_date_obj.strftime('%A, %d.%m.')
+            h_days_ago = (date.today() - h_date_obj.date()).days
+            h_ago = "heute" if h_days_ago==0 else "gestern" if h_days_ago==1 else f"vor {h_days_ago} Tagen"
+        except:
+            h_weekday = h['date']
+            h_ago = ""
+        health_text += f"\n• {h_weekday} ({h_ago}): {h.get('sleep_duration','?')}h Schlaf | Score {h.get('sleep_score') or '?'} | HRV {h.get('hrv') or '?'}ms | RHR {h.get('resting_hr') or '?'}bpm"
 
     history_text = "\n".join(f"{'Du' if m['role']=='user' else 'Coach'}: {m['content'][:200]}" for m in chat_history[-20:])
 
